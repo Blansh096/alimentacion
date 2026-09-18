@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuaderno de cocina — Nutrición</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --paper:#E9E7DE;
+    --card:#F5F3EC;
+    --ink:#20241F;
+    --ink-soft:#5B5D51;
+    --moss:#3E5C43;
+    --moss-dark:#2B4030;
+    --mustard:#C58A34;
+    --rust:#A6491F;
+    --line:#D2CDBB;
+    --line-strong:#B9B29B;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  h1,h2,h3{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    margin:0 0 .3em 0;
+    color:var(--moss-dark);
+  }
+  .app{
+    display:grid;
+    grid-template-columns:220px 1fr;
+    min-height:100vh;
+  }
+  .sidebar{
+    background:var(--moss-dark);
+    color:#EFEAD9;
+    padding:28px 0;
+    display:flex;
+    flex-direction:column;
+  }
+  .brand{
+    font-family:'Fraunces',serif;
+    font-size:1.25rem;
+    font-weight:700;
+    padding:0 22px 22px 22px;
+    border-bottom:1px solid rgba(239,234,217,.18);
+    margin-bottom:10px;
+    letter-spacing:.2px;
+  }
+  .brand span{display:block;font-family:'Inter',sans-serif;font-weight:400;font-size:.72rem;color:#B9C9B5;margin-top:4px;}
+  nav{display:flex;flex-direction:column;gap:2px;padding:10px 12px;}
+  .navbtn{
+    background:none;border:none;text-align:left;color:#DCE3D3;
+    padding:10px 12px;border-radius:var(--radius);cursor:pointer;
+    font-family:'Inter',sans-serif;font-size:.92rem;font-weight:500;
+    display:flex;align-items:center;gap:10px;
+  }
+  .navbtn:hover{background:rgba(239,234,217,.08);}
+  .navbtn.active{background:#EFEAD9;color:var(--moss-dark);font-weight:600;}
+  .navbtn .dot{width:7px;height:7px;border-radius:50%;background:var(--mustard);flex-shrink:0;}
+  main{padding:36px 44px;max-width:980px;}
+  .toppanel{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:26px;gap:20px;flex-wrap:wrap;}
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:20px 22px;
+    margin-bottom:18px;
+  }
+  .cardhead{
+    display:flex;justify-content:space-between;align-items:center;
+    border-bottom:1px solid var(--line);
+    padding-bottom:10px;margin-bottom:14px;
+  }
+  label{display:block;font-size:.78rem;color:var(--ink-soft);margin-bottom:4px;font-weight:500;}
+  input,select,textarea{
+    width:100%;padding:8px 10px;border:1px solid var(--line-strong);border-radius:4px;
+    font-family:'Inter',sans-serif;font-size:.9rem;background:#fff;color:var(--ink);
+  }
+  textarea{resize:vertical;min-height:60px;}
+  .row{display:grid;gap:12px;margin-bottom:12px;}
+  .row.c2{grid-template-columns:1fr 1fr;}
+  .row.c3{grid-template-columns:2fr 1fr 1fr;}
+  .row.c4{grid-template-columns:1fr 1fr 1fr auto;}
+  button.btn{
+    background:var(--moss);color:#fff;border:none;padding:9px 16px;border-radius:4px;
+    font-family:'Inter',sans-serif;font-weight:600;font-size:.85rem;cursor:pointer;
+  }
+  button.btn:hover{background:var(--moss-dark);}
+  button.btn.secondary{background:transparent;color:var(--moss-dark);border:1px solid var(--moss);}
+  button.btn.secondary:hover{background:rgba(62,92,67,.08);}
+  button.btn.danger{background:transparent;color:var(--rust);border:1px solid var(--rust);}
+  button.btn.danger:hover{background:rgba(166,73,31,.08);}
+  button.iconbtn{background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:.85rem;padding:4px 8px;}
+  button.iconbtn:hover{color:var(--rust);}
+  table{width:100%;border-collapse:collapse;font-size:.87rem;}
+  th{text-align:left;color:var(--ink-soft);font-weight:600;font-size:.75rem;text-transform:none;padding:6px 8px;border-bottom:1px solid var(--line-strong);}
+  td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  .muted{color:var(--ink-soft);font-size:.85rem;}
+  .pill{display:inline-block;background:rgba(62,92,67,.1);color:var(--moss-dark);border-radius:20px;padding:2px 10px;font-size:.72rem;font-weight:600;}
+  .macrobar{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;}
+  .macrobox{background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px 14px;min-width:76px;text-align:center;}
+  .macrobox .val{font-family:'Fraunces',serif;font-size:1.15rem;font-weight:600;color:var(--moss-dark);}
+  .macrobox .lab{font-size:.68rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;}
+  .stepitem{display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;}
+  .stepitem span.n{font-family:'Fraunces',serif;font-weight:600;color:var(--mustard);width:20px;flex-shrink:0;}
+  .empty{padding:30px 10px;text-align:center;color:var(--ink-soft);font-style:italic;}
+  .weeknav{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+  .weeknav .lbl{font-family:'Fraunces',serif;font-weight:600;color:var(--moss-dark);}
+  .planner-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;}
+  .daycol{background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px;min-height:220px;}
+  .daycol h4{margin:0 0 8px 0;font-size:.8rem;text-transform:capitalize;color:var(--moss-dark);border-bottom:1px solid var(--line);padding-bottom:6px;}
+  .slot{margin-bottom:8px;}
+  .slot .slotlabel{font-size:.68rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;}
+  .slot select{font-size:.78rem;padding:5px 6px;}
+  .profilerow{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+  .profiletag{font-size:.68rem;color:var(--moss-dark);width:60px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .profilerow select{flex:1;}
+  .slot > .iconbtn{font-size:.68rem;padding:2px 0;}
+  .daytotal{font-size:.72rem;color:var(--ink-soft);margin-top:6px;border-top:1px dashed var(--line);padding-top:6px;}
+  .shopitem{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--line);}
+  .shopitem:last-child{border-bottom:none;}
+  .shopitem.checked span.name{text-decoration:line-through;color:var(--ink-soft);}
+  .statusline{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-soft);}
+  .statusdot{width:8px;height:8px;border-radius:50%;background:#B9B29B;}
+  .statusdot.on{background:var(--moss);}
+  .searchbox{margin-bottom:14px;}
+  ::placeholder{color:#9C9887;}
+  @media (max-width:760px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{flex-direction:row;overflow-x:auto;padding:14px;}
+    .brand{display:none;}
+    nav{flex-direction:row;padding:0;}
+    main{padding:22px 16px;}
+    .planner-grid{grid-template-columns:1fr 1fr;}
+    .row.c3,.row.c4{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="brand">Cuaderno de cocina<span>recetas · macros · planificación</span></div>
+    <nav id="nav"></nav>
+  </div>
+  <main id="main"></main>
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   CONFIGURACIÓN
+--------------------------------------------------------------- */
+const GOOGLE_CLIENT_ID = "176303500752-s5nur55hlr7huar5omta83skuc05hjul.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_FILENAME = "nutricion-datos.json";
+const STORAGE_KEY = "nutricionAppData";
+const DIAS = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+const COMIDAS = [["desayuno","Desayuno"],["almuerzo","Almuerzo"],["cena","Cena"],["snack","Snack"]];
+
+const BULK_PROMPT = `Dame los datos nutricionales de los siguientes alimentos, en formato JSON, como un array de objetos con EXACTAMENTE estas claves:
+- name (texto, nombre del alimento)
+- category (texto corto, ej. "Proteína", "Verdura", "Cereal", "Lácteo", "Fruta")
+- baseUnit ("g" para sólidos o "ml" para líquidos)
+- kcal100 (kcal por cada 100 g o 100 ml, número)
+- protein100 (gramos de proteína por cada 100, número)
+- carbs100 (gramos de carbohidratos por cada 100, número)
+- fat100 (gramos de grasa por cada 100, número)
+- fiber100 (gramos de fibra por cada 100, número, usa 0 si no aplica)
+- measures (array opcional de equivalencias caseras, cada una {"label":"taza","grams":120}, incluye solo las que tengan sentido para ese alimento, ej. taza, cucharada, cucharadita, unidad)
+
+Responde ÚNICAMENTE con el JSON (sin texto adicional, sin markdown, sin \`\`\`), listo para copiar y pegar.
+
+Alimentos:
+- (pega aquí tu lista de alimentos, uno por línea)`;
+
+/* ---------------------------------------------------------------
+   ESTADO Y PERSISTENCIA LOCAL
+--------------------------------------------------------------- */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+function defaultData(){
+  return {
+    ingredients: [], recipes: [], mealPlan: {}, shoppingChecked: {}, driveFileId: null, lastSync: null,
+    profiles: [ {id:'p1', name:'Persona 1'}, {id:'p2', name:'Persona 2'} ]
+  };
+}
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultData();
+    const parsed = JSON.parse(raw);
+    const merged = Object.assign(defaultData(), parsed);
+    if(!merged.profiles || merged.profiles.length!==2) merged.profiles = defaultData().profiles;
+    migrateMealPlan(merged);
+    return merged;
+  }catch(e){ return defaultData(); }
+}
+
+// Convierte planes antiguos de un solo usuario ({recipeId,servings}) al formato
+// por perfil ({ p1:{recipeId,servings}, p2:{recipeId,servings} }).
+function migrateMealPlan(d){
+  const [p1, p2] = d.profiles;
+  Object.keys(d.mealPlan||{}).forEach(day=>{
+    const dayPlan = d.mealPlan[day];
+    Object.keys(dayPlan).forEach(slot=>{
+      const entry = dayPlan[slot];
+      if(entry && entry.recipeId && !entry[p1.id] && !entry[p2.id]){
+        dayPlan[slot] = { [p1.id]: {recipeId:entry.recipeId, servings:entry.servings||1}, [p2.id]: {recipeId:entry.recipeId, servings:entry.servings||1} };
+      }
+    });
+  });
+}
+
+let data = loadLocal();
+let currentTab = "ingredientes";
+let weekStart = getMonday(new Date());
+let bulkImportMsg = "";
+
+function saveLocal(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+/* ---------------------------------------------------------------
+   UTILIDADES DE FECHA
+--------------------------------------------------------------- */
+function getMonday(d){
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0,0,0,0);
+  return date;
+}
+function isoDate(d){ return d.toISOString().slice(0,10); }
+function addDays(d,n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function fmtShort(d){ return d.toLocaleDateString('es-ES',{day:'numeric',month:'short'}); }
+
+/* ---------------------------------------------------------------
+   NAVEGACIÓN
+--------------------------------------------------------------- */
+const TABS = [
+  ["ingredientes","Ingredientes"],
+  ["recetas","Recetas"],
+  ["planificador","Planificador semanal"],
+  ["compras","Lista de compras"],
+  ["sync","Sincronización"]
+];
+
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = "";
+  TABS.forEach(([key,label])=>{
+    const b = document.createElement('button');
+    b.className = 'navbtn' + (currentTab===key ? ' active':'');
+    b.innerHTML = '<span class="dot"></span>' + label;
+    b.onclick = ()=>{ currentTab = key; renderAll(); };
+    nav.appendChild(b);
+  });
+}
+
+function renderAll(){
+  renderNav();
+  const main = document.getElementById('main');
+  if(currentTab==='ingredientes') main.innerHTML = viewIngredientes();
+  else if(currentTab==='recetas') main.innerHTML = viewRecetas();
+  else if(currentTab==='planificador') main.innerHTML = viewPlanificador();
+  else if(currentTab==='compras') main.innerHTML = viewCompras();
+  else if(currentTab==='sync') main.innerHTML = viewSync();
+  attachHandlers();
+}
+
+/* ---------------------------------------------------------------
+   CÁLCULO DE MACROS
+--------------------------------------------------------------- */
+function findIngredient(id){ return data.ingredients.find(i=>i.id===id); }
+
+function gramsForEntry(ing, quantity, unit){
+  if(!ing) return 0;
+  if(unit === ing.baseUnit) return quantity;
+  const m = (ing.measures||[]).find(m=>m.label===unit);
+  if(m) return quantity * m.grams;
+  return quantity;
+}
+
+function macrosForGrams(ing, grams){
+  const f = grams/100;
+  return {
+    kcal: (ing.kcal100||0)*f,
+    protein: (ing.protein100||0)*f,
+    carbs: (ing.carbs100||0)*f,
+    fat: (ing.fat100||0)*f,
+    fiber: (ing.fiber100||0)*f
+  };
+}
+
+function calcRecipeTotals(recipe){
+  const total = {kcal:0,protein:0,carbs:0,fat:0,fiber:0};
+  (recipe.ingredients||[]).forEach(entry=>{
+    const ing = findIngredient(entry.ingredientId);
+    if(!ing) return;
+    const grams = gramsForEntry(ing, entry.quantity, entry.unit);
+    const m = macrosForGrams(ing, grams);
+    total.kcal += m.kcal; total.protein += m.protein; total.carbs += m.carbs; total.fat += m.fat; total.fiber += m.fiber;
+  });
+  return total;
+}
+
+function round1(n){ return Math.round(n*10)/10; }
+
+/* ---------------------------------------------------------------
+   VISTA: INGREDIENTES
+--------------------------------------------------------------- */
+function viewIngredientes(){
+  const rows = data.ingredients.map(ing=>{
+    return `<tr>
+      <td><strong>${escapeHtml(ing.name)}</strong><div class="muted">${escapeHtml(ing.category||'')}</div></td>
+      <td>${ing.baseUnit}</td>
+      <td>${round1(ing.kcal100||0)}</td>
+      <td>${round1(ing.protein100||0)} g</td>
+      <td>${round1(ing.carbs100||0)} g</td>
+      <td>${round1(ing.fat100||0)} g</td>
+      <td>${(ing.measures||[]).map(m=>escapeHtml(m.label)).join(', ')||'—'}</td>
+      <td><button class="iconbtn" data-edit-ing="${ing.id}">Editar</button><button class="iconbtn" data-del-ing="${ing.id}">Borrar</button></td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="toppanel">
+    <div><h1>Ingredientes</h1><p class="muted">Tu base de datos propia de alimentos. Los valores nutricionales son por cada 100 g / 100 ml.</p></div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h3>${data.editingIngredientId ? 'Editar ingrediente':'Nuevo ingrediente'}</h3></div>
+    <form id="form-ingrediente">
+      <div class="row c2">
+        <div><label>Nombre</label><input name="name" required placeholder="Ej. Pechuga de pollo"></div>
+        <div><label>Categoría</label><input name="category" placeholder="Ej. Proteína, verdura, cereal..."></div>
+      </div>
+      <div class="row c2">
+        <div><label>Unidad base</label>
+          <select name="baseUnit"><option value="g">Gramos (g)</option><option value="ml">Mililitros (ml)</option></select>
+        </div>
+        <div><label>Medidas caseras (opcional)</label><input name="measures" placeholder="Ej. taza=120, cucharada=15, unidad=50"></div>
+      </div>
+      <div class="row c4" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+        <div><label>Kcal /100</label><input name="kcal100" type="number" step="0.1" value="0"></div>
+        <div><label>Proteína g /100</label><input name="protein100" type="number" step="0.1" value="0"></div>
+        <div><label>Carbos g /100</label><input name="carbs100" type="number" step="0.1" value="0"></div>
+        <div><label>Grasa g /100</label><input name="fat100" type="number" step="0.1" value="0"></div>
+      </div>
+      <div class="row c2">
+        <div><label>Fibra g /100 (opcional)</label><input name="fiber100" type="number" step="0.1" value="0"></div>
+      </div>
+      <button class="btn" type="submit">${data.editingIngredientId ? 'Guardar cambios':'Añadir ingrediente'}</button>
+      ${data.editingIngredientId ? '<button class="btn secondary" type="button" id="cancel-edit-ing" style="margin-left:8px;">Cancelar</button>' : ''}
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Carga masiva con IA</h3></div>
+    <p class="muted">Copia el siguiente prompt, pégalo en tu IA de confianza junto con la lista de alimentos que quieras cargar, y pega aquí el JSON que te devuelva.</p>
+    <label>Prompt para la IA</label>
+    <textarea id="bulk-prompt" readonly rows="7" style="font-family:monospace;font-size:.78rem;">${escapeHtml(BULK_PROMPT)}</textarea>
+    <button type="button" class="btn secondary" id="copy-bulk-prompt" style="margin:8px 0 18px 0;">Copiar prompt</button>
+
+    <label>Pega aquí el JSON que te devolvió la IA</label>
+    <textarea id="bulk-json" rows="8" placeholder='[{"name":"Pechuga de pollo","category":"Proteína","baseUnit":"g","kcal100":165,"protein100":31,"carbs100":0,"fat100":3.6,"fiber100":0,"measures":[{"label":"unidad","grams":150}]}]'></textarea>
+    <div id="bulk-result" class="muted" style="margin:6px 0;">${escapeHtml(bulkImportMsg)}</div>
+    <button type="button" class="btn" id="import-bulk-json">Importar ingredientes</button>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Listado (${data.ingredients.length})</h3></div>
+    ${data.ingredients.length===0 ? '<div class="empty">Todavía no has añadido ingredientes.</div>' : `
+    <table><thead><tr><th>Nombre</th><th>Unidad</th><th>Kcal</th><th>Prot.</th><th>Carb.</th><th>Grasa</th><th>Medidas</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`}
+  </div>`;
+}
+
+function parseMeasures(str){
+  if(!str) return [];
+  return str.split(',').map(s=>s.trim()).filter(Boolean).map(pair=>{
+    const [label, grams] = pair.split('=').map(x=>x && x.trim());
+    return { label: label||'unidad', grams: parseFloat(grams)||0 };
+  }).filter(m=>m.label && m.grams>0);
+}
+
+// Valida y normaliza el JSON pegado por el usuario (proveniente de una IA)
+// y agrega los ingredientes válidos a la base, evitando duplicados por nombre.
+function importBulkIngredients(rawText){
+  let arr;
+  try{
+    let cleaned = rawText.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    arr = JSON.parse(cleaned);
+  }catch(e){
+    return { added:0, skipped:0, errors:['El texto pegado no es un JSON válido.'] };
+  }
+  if(!Array.isArray(arr)) arr = [arr];
+
+  const existingNames = new Set(data.ingredients.map(i=>i.name.trim().toLowerCase()));
+  let added = 0, skipped = 0;
+  const errors = [];
+
+  arr.forEach((item,idx)=>{
+    if(!item || typeof item !== 'object' || !item.name){
+      errors.push(`Elemento ${idx+1}: falta "name", se omitió.`);
+      return;
+    }
+    const nameKey = String(item.name).trim().toLowerCase();
+    if(existingNames.has(nameKey)){ skipped++; return; }
+
+    const measures = Array.isArray(item.measures)
+      ? item.measures.filter(m=>m && m.label && m.grams>0).map(m=>({label:String(m.label), grams:parseFloat(m.grams)||0}))
+      : [];
+
+    data.ingredients.push({
+      id: uid(),
+      name: String(item.name).trim(),
+      category: item.category ? String(item.category).trim() : '',
+      baseUnit: (item.baseUnit==='ml') ? 'ml' : 'g',
+      kcal100: parseFloat(item.kcal100)||0,
+      protein100: parseFloat(item.protein100)||0,
+      carbs100: parseFloat(item.carbs100)||0,
+      fat100: parseFloat(item.fat100)||0,
+      fiber100: parseFloat(item.fiber100)||0,
+      measures
+    });
+    existingNames.add(nameKey);
+    added++;
+  });
+
+  if(added>0) saveLocal();
+  return { added, skipped, errors };
+}
+
+/* ---------------------------------------------------------------
+   VISTA: RECETAS
+--------------------------------------------------------------- */
+function viewRecetas(){
+  const editing = data.editingRecipeId ? data.recipes.find(r=>r.id===data.editingRecipeId) : null;
+  const draft = data.recipeDraft || (editing ? JSON.parse(JSON.stringify(editing)) : {name:'',servings:2,category:'',ingredients:[],steps:['']});
+  data.recipeDraft = draft;
+
+  const ingOptions = data.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
+
+  const draftRows = draft.ingredients.map((entry,idx)=>{
+    const ing = findIngredient(entry.ingredientId);
+    const unitOptions = ing ? [ing.baseUnit, ...(ing.measures||[]).map(m=>m.label)] : [];
+    return `<tr>
+      <td>
+        <select data-draft-ing="${idx}">
+          <option value="">Seleccionar...</option>
+          ${data.ingredients.map(i=>`<option value="${i.id}" ${i.id===entry.ingredientId?'selected':''}>${escapeHtml(i.name)}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="number" step="0.1" style="width:80px" data-draft-qty="${idx}" value="${entry.quantity||''}"></td>
+      <td><select data-draft-unit="${idx}">${unitOptions.map(u=>`<option value="${u}" ${u===entry.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td><button type="button" class="iconbtn" data-draft-rm="${idx}">Quitar</button></td>
+    </tr>`;
+  }).join('');
+
+  const stepsHtml = draft.steps.map((s,idx)=>`
+    <div class="stepitem">
+      <span class="n">${idx+1}.</span>
+      <textarea rows="1" data-draft-step="${idx}" style="flex:1">${escapeHtml(s)}</textarea>
+      <button type="button" class="iconbtn" data-draft-rmstep="${idx}">Quitar</button>
+    </div>`).join('');
+
+  const previewTotals = calcRecipeTotals(draft);
+  const perServing = draft.servings>0 ? {
+    kcal: previewTotals.kcal/draft.servings, protein: previewTotals.protein/draft.servings,
+    carbs: previewTotals.carbs/draft.servings, fat: previewTotals.fat/draft.servings
+  } : previewTotals;
+
+  const recipeCards = data.recipes.map(r=>{
+    const t = calcRecipeTotals(r);
+    const ps = r.servings>0 ? {kcal:t.kcal/r.servings,protein:t.protein/r.servings,carbs:t.carbs/r.servings,fat:t.fat/r.servings} : t;
+    return `<div class="card">
+      <div class="cardhead">
+        <div><h3>${escapeHtml(r.name)}</h3><span class="pill">${escapeHtml(r.category||'sin categoría')}</span> <span class="muted">· ${r.servings} porciones</span></div>
+        <div><button class="iconbtn" data-edit-recipe="${r.id}">Editar</button><button class="iconbtn" data-del-recipe="${r.id}">Borrar</button></div>
+      </div>
+      <div class="macrobar">
+        <div class="macrobox"><div class="val">${round1(ps.kcal)}</div><div class="lab">kcal/porción</div></div>
+        <div class="macrobox"><div class="val">${round1(ps.protein)} g</div><div class="lab">Proteína</div></div>
+        <div class="macrobox"><div class="val">${round1(ps.carbs)} g</div><div class="lab">Carbos</div></div>
+        <div class="macrobox"><div class="val">${round1(ps.fat)} g</div><div class="lab">Grasa</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="toppanel"><div><h1>Recetas</h1><p class="muted">Los macros se calculan automáticamente por porción, a partir de tu base de ingredientes.</p></div></div>
+
+  <div class="card">
+    <div class="cardhead"><h3>${editing ? 'Editar receta':'Nueva receta'}</h3></div>
+    <form id="form-receta">
+      <div class="row c3">
+        <div><label>Nombre</label><input id="draft-name" value="${escapeHtml(draft.name)}" placeholder="Ej. Bowl de arroz y pollo"></div>
+        <div><label>Categoría</label><input id="draft-category" value="${escapeHtml(draft.category||'')}" placeholder="Ej. Almuerzo"></div>
+        <div><label>Porciones</label><input id="draft-servings" type="number" min="1" value="${draft.servings||1}"></div>
+      </div>
+
+      <label style="margin-top:6px;">Ingredientes</label>
+      <table style="margin-bottom:8px;"><thead><tr><th>Ingrediente</th><th>Cantidad</th><th>Unidad</th><th></th></tr></thead>
+      <tbody>${draftRows || ''}</tbody></table>
+      <button type="button" class="btn secondary" id="add-draft-ing" style="margin-bottom:16px;">+ Añadir ingrediente</button>
+
+      <label>Pasos de preparación</label>
+      <div id="steps-list">${stepsHtml}</div>
+      <button type="button" class="btn secondary" id="add-draft-step" style="margin:8px 0 16px 0;">+ Añadir paso</button>
+
+      <div class="cardhead" style="border:none;padding:0;margin:6px 0;"><h3 style="font-size:1rem;">Vista previa de macros (por porción)</h3></div>
+      <div class="macrobar">
+        <div class="macrobox"><div class="val">${round1(perServing.kcal)}</div><div class="lab">kcal</div></div>
+        <div class="macrobox"><div class="val">${round1(perServing.protein)} g</div><div class="lab">Proteína</div></div>
+        <div class="macrobox"><div class="val">${round1(perServing.carbs)} g</div><div class="lab">Carbos</div></div>
+        <div class="macrobox"><div class="val">${round1(perServing.fat)} g</div><div class="lab">Grasa</div></div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <button class="btn" type="submit">${editing ? 'Guardar cambios':'Guardar receta'}</button>
+        <button class="btn secondary" type="button" id="cancel-recipe" style="margin-left:8px;">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <h2 style="margin-top:30px;">Tus recetas (${data.recipes.length})</h2>
+  ${data.recipes.length===0 ? '<div class="empty">Todavía no has guardado recetas.</div>' : recipeCards}
+  `;
+}
+
+/* ---------------------------------------------------------------
+   VISTA: PLANIFICADOR SEMANAL
+--------------------------------------------------------------- */
+function ensureSlot(day, slotKey){
+  if(!data.mealPlan[day]) data.mealPlan[day] = {};
+  if(!data.mealPlan[day][slotKey]) data.mealPlan[day][slotKey] = {};
+  const [p1,p2] = data.profiles;
+  if(!data.mealPlan[day][slotKey][p1.id]) data.mealPlan[day][slotKey][p1.id] = {recipeId:'', servings:1};
+  if(!data.mealPlan[day][slotKey][p2.id]) data.mealPlan[day][slotKey][p2.id] = {recipeId:'', servings:1};
+  return data.mealPlan[day][slotKey];
+}
+
+function recipeOptionsHtml(selectedId){
+  return '<option value="">—</option>' + data.recipes.map(r=>`<option value="${r.id}" ${r.id===selectedId?'selected':''}>${escapeHtml(r.name)}</option>`).join('');
+}
+
+function viewPlanificador(){
+  const days = [...Array(7)].map((_,i)=>addDays(weekStart,i));
+  const [p1,p2] = data.profiles;
+  const dayTotals = {}; // key -> {p1:{},p2:{}}
+
+  const dayCols = days.map((d,i)=>{
+    const key = isoDate(d);
+    const totals = { [p1.id]:{kcal:0,protein:0,carbs:0,fat:0}, [p2.id]:{kcal:0,protein:0,carbs:0,fat:0} };
+
+    const slots = COMIDAS.map(([slotKey,slotLabel])=>{
+      const entry = ensureSlot(key, slotKey);
+      [p1,p2].forEach(prof=>{
+        const assigned = entry[prof.id];
+        const recipe = assigned.recipeId ? data.recipes.find(r=>r.id===assigned.recipeId) : null;
+        if(recipe){
+          const t = calcRecipeTotals(recipe);
+          const factor = (assigned.servings||1)/(recipe.servings||1);
+          const tot = totals[prof.id];
+          tot.kcal += t.kcal*factor; tot.protein += t.protein*factor; tot.carbs += t.carbs*factor; tot.fat += t.fat*factor;
+        }
+      });
+      const sameChoice = entry[p1.id].recipeId === entry[p2.id].recipeId;
+      return `<div class="slot">
+        <div class="slotlabel">${slotLabel}</div>
+        <div class="profilerow">
+          <span class="profiletag">${escapeHtml(p1.name)}</span>
+          <select data-plan-day="${key}" data-plan-slot="${slotKey}" data-plan-profile="${p1.id}">${recipeOptionsHtml(entry[p1.id].recipeId)}</select>
+        </div>
+        <div class="profilerow">
+          <span class="profiletag">${escapeHtml(p2.name)}</span>
+          <select data-plan-day="${key}" data-plan-slot="${slotKey}" data-plan-profile="${p2.id}">${recipeOptionsHtml(entry[p2.id].recipeId)}</select>
+        </div>
+        ${!sameChoice ? `<button type="button" class="iconbtn" data-plan-equalize="${key}|${slotKey}">Igualar comidas</button>` : ''}
+      </div>`;
+    }).join('');
+
+    dayTotals[key] = totals;
+
+    return `<div class="daycol">
+      <h4>${DIAS[i]}<br><span class="muted" style="text-transform:none;font-weight:400;">${fmtShort(d)}</span></h4>
+      ${slots}
+      <div class="daytotal"><strong>${escapeHtml(p1.name)}:</strong> ${round1(totals[p1.id].kcal)} kcal · P${round1(totals[p1.id].protein)} C${round1(totals[p1.id].carbs)} G${round1(totals[p1.id].fat)}</div>
+      <div class="daytotal"><strong>${escapeHtml(p2.name)}:</strong> ${round1(totals[p2.id].kcal)} kcal · P${round1(totals[p2.id].protein)} C${round1(totals[p2.id].carbs)} G${round1(totals[p2.id].fat)}</div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="toppanel"><div><h1>Planificador semanal</h1><p class="muted">Cada quien elige su comida en cada casilla. Si comen lo mismo, simplemente seleccionen la misma receta ambos, o usen "Igualar comidas".</p></div></div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="cardhead"><h3>Nombres</h3></div>
+    <div class="row c2">
+      <div><label>Perfil 1</label><input id="profile-name-0" value="${escapeHtml(p1.name)}"></div>
+      <div><label>Perfil 2</label><input id="profile-name-1" value="${escapeHtml(p2.name)}"></div>
+    </div>
+  </div>
+
+  <div class="weeknav">
+    <button class="btn secondary" id="week-prev">← Semana anterior</button>
+    <span class="lbl">${fmtShort(weekStart)} – ${fmtShort(addDays(weekStart,6))}</span>
+    <button class="btn secondary" id="week-next">Semana siguiente →</button>
+  </div>
+
+  ${data.recipes.length===0 ? '<div class="empty">Crea al menos una receta para poder planificarla.</div>' : `<div class="planner-grid">${dayCols}</div>`}
+  `;
+}
+
+/* ---------------------------------------------------------------
+   VISTA: LISTA DE COMPRAS
+--------------------------------------------------------------- */
+function viewCompras(){
+  const days = [...Array(7)].map((_,i)=>addDays(weekStart,i));
+  const weekKey = isoDate(weekStart);
+  const aggregate = {}; // ingredientId -> grams
+
+  const [p1,p2] = data.profiles;
+  days.forEach(d=>{
+    const key = isoDate(d);
+    const plan = data.mealPlan[key];
+    if(!plan) return;
+    COMIDAS.forEach(([slotKey])=>{
+      const slot = plan[slotKey];
+      if(!slot) return;
+      [p1,p2].forEach(prof=>{
+        const assigned = slot[prof.id];
+        if(!assigned || !assigned.recipeId) return;
+        const recipe = data.recipes.find(r=>r.id===assigned.recipeId);
+        if(!recipe) return;
+        const factor = (assigned.servings||1)/(recipe.servings||1);
+        (recipe.ingredients||[]).forEach(entry=>{
+          const ing = findIngredient(entry.ingredientId);
+          if(!ing) return;
+          const grams = gramsForEntry(ing, entry.quantity, entry.unit) * factor;
+          aggregate[ing.id] = (aggregate[ing.id]||0) + grams;
+        });
+      });
+    });
+  });
+
+  const items = Object.keys(aggregate).map(ingId=>{
+    const ing = findIngredient(ingId);
+    if(!ing) return null;
+    const grams = aggregate[ingId];
+    const display = grams >= 1000 ? `${round1(grams/1000)} kg` : `${Math.round(grams)} ${ing.baseUnit}`;
+    const checkKey = `${weekKey}_${ingId}`;
+    const checked = !!data.shoppingChecked[checkKey];
+    return {ing, grams, display, checkKey, checked};
+  }).filter(Boolean).sort((a,b)=>a.ing.name.localeCompare(b.ing.name));
+
+  const listHtml = items.map(it=>`
+    <div class="shopitem ${it.checked?'checked':''}">
+      <input type="checkbox" data-shop-check="${it.checkKey}" ${it.checked?'checked':''}>
+      <span class="name" style="flex:1;">${escapeHtml(it.ing.name)}</span>
+      <span class="muted">${it.display}</span>
+    </div>`).join('');
+
+  return `
+  <div class="toppanel"><div><h1>Lista de compras</h1><p class="muted">Generada desde el plan de la semana del ${fmtShort(weekStart)} al ${fmtShort(addDays(weekStart,6))}.</p></div></div>
+  <div class="card">
+    ${items.length===0 ? '<div class="empty">No hay recetas planificadas esta semana todavía.</div>' : listHtml}
+  </div>`;
+}
+
+/* ---------------------------------------------------------------
+   VISTA: SINCRONIZACIÓN CON GOOGLE DRIVE
+--------------------------------------------------------------- */
+let tokenClient = null;
+let accessToken = null;
+let syncStatus = "Sin conectar";
+
+function initTokenClientOnce(){
+  if(tokenClient || !window.google) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: (resp)=>{
+      if(resp.error){ syncStatus = "Error de autenticación: " + resp.error; renderAll(); return; }
+      accessToken = resp.access_token;
+      syncStatus = "Conectado a Google Drive";
+      renderAll();
+    }
+  });
+}
+
+function viewSync(){
+  return `
+  <div class="toppanel"><div><h1>Sincronización</h1><p class="muted">Guarda o recupera tus datos (ingredientes, recetas, plan y compras) como un archivo JSON en tu Google Drive.</p></div></div>
+
+  <div class="card">
+    <div class="statusline"><span class="statusdot ${accessToken?'on':''}"></span> ${syncStatus}</div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn" id="drive-connect">${accessToken ? 'Reconectar' : 'Conectar con Google Drive'}</button>
+      <button class="btn secondary" id="drive-save" ${accessToken?'':'disabled'}>Guardar en Drive</button>
+      <button class="btn secondary" id="drive-load" ${accessToken?'':'disabled'}>Cargar desde Drive</button>
+    </div>
+    <p class="muted" style="margin-top:14px;">Último guardado: ${data.lastSync ? new Date(data.lastSync).toLocaleString('es-ES') : 'nunca'}</p>
+  </div>
+
+  <div class="card">
+    <h3>Copia de seguridad local</h3>
+    <p class="muted">Además de Drive, puedes exportar o importar un archivo .json manualmente.</p>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn secondary" id="export-json">Exportar copia (.json)</button>
+      <label class="btn secondary" style="display:inline-flex;align-items:center;cursor:pointer;">
+        Importar copia (.json)
+        <input type="file" id="import-json" accept="application/json" style="display:none;">
+      </label>
+    </div>
+  </div>`;
+}
+
+async function driveFindFileId(){
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILENAME}' and trashed=false&spaces=drive&fields=files(id,name)`,{
+    headers:{ Authorization: `Bearer ${accessToken}` }
+  });
+  const json = await res.json();
+  if(json.files && json.files.length>0) return json.files[0].id;
+  return null;
+}
+
+async function driveSave(){
+  syncStatus = "Guardando..."; renderAll();
+  try{
+    if(!data.driveFileId){ data.driveFileId = await driveFindFileId(); }
+    const payload = JSON.stringify({
+      ingredients:data.ingredients, recipes:data.recipes, mealPlan:data.mealPlan,
+      shoppingChecked:data.shoppingChecked, profiles:data.profiles
+    });
+    const boundary = "-------nutricion" + uid();
+    const metadata = { name: DRIVE_FILENAME, mimeType: "application/json" };
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${payload}\r\n--${boundary}--`;
+
+    const url = data.driveFileId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${data.driveFileId}?uploadType=multipart`
+      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    const method = data.driveFileId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url,{
+      method,
+      headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':`multipart/related; boundary=${boundary}` },
+      body
+    });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    data.driveFileId = json.id;
+    data.lastSync = new Date().toISOString();
+    saveLocal();
+    syncStatus = "Guardado correctamente en Drive";
+  }catch(e){
+    syncStatus = "Error al guardar: " + e.message;
+  }
+  renderAll();
+}
+
+async function driveLoad(){
+  syncStatus = "Cargando..."; renderAll();
+  try{
+    if(!data.driveFileId){ data.driveFileId = await driveFindFileId(); }
+    if(!data.driveFileId){ syncStatus = "No se encontró ningún archivo en Drive todavía."; renderAll(); return; }
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${data.driveFileId}?alt=media`,{
+      headers:{ Authorization:`Bearer ${accessToken}` }
+    });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    data.ingredients = json.ingredients || [];
+    data.recipes = json.recipes || [];
+    data.mealPlan = json.mealPlan || {};
+    data.shoppingChecked = json.shoppingChecked || {};
+    if(json.profiles && json.profiles.length===2) data.profiles = json.profiles;
+    migrateMealPlan(data);
+    saveLocal();
+    syncStatus = "Datos cargados desde Drive";
+  }catch(e){
+    syncStatus = "Error al cargar: " + e.message;
+  }
+  renderAll();
+}
+
+/* ---------------------------------------------------------------
+   HELPERS
+--------------------------------------------------------------- */
+function escapeHtml(str){
+  return String(str||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------------------------------------------------------
+   MANEJADORES DE EVENTOS (delegados tras cada render)
+--------------------------------------------------------------- */
+function attachHandlers(){
+  // -------- Ingredientes --------
+  const fIng = document.getElementById('form-ingrediente');
+  if(fIng){
+    if(data.editingIngredientId){
+      const ing = findIngredient(data.editingIngredientId);
+      if(ing){
+        fIng.name.value = ing.name; fIng.category.value = ing.category||'';
+        fIng.baseUnit.value = ing.baseUnit; fIng.kcal100.value = ing.kcal100;
+        fIng.protein100.value = ing.protein100; fIng.carbs100.value = ing.carbs100;
+        fIng.fat100.value = ing.fat100; fIng.fiber100.value = ing.fiber100||0;
+        fIng.measures.value = (ing.measures||[]).map(m=>`${m.label}=${m.grams}`).join(', ');
+      }
+    }
+    fIng.onsubmit = (e)=>{
+      e.preventDefault();
+      const fd = new FormData(fIng);
+      const obj = {
+        id: data.editingIngredientId || uid(),
+        name: fd.get('name').trim(),
+        category: fd.get('category').trim(),
+        baseUnit: fd.get('baseUnit'),
+        kcal100: parseFloat(fd.get('kcal100'))||0,
+        protein100: parseFloat(fd.get('protein100'))||0,
+        carbs100: parseFloat(fd.get('carbs100'))||0,
+        fat100: parseFloat(fd.get('fat100'))||0,
+        fiber100: parseFloat(fd.get('fiber100'))||0,
+        measures: parseMeasures(fd.get('measures'))
+      };
+      if(data.editingIngredientId){
+        const idx = data.ingredients.findIndex(i=>i.id===obj.id);
+        data.ingredients[idx] = obj;
+        data.editingIngredientId = null;
+      } else {
+        data.ingredients.push(obj);
+      }
+      saveLocal(); renderAll();
+    };
+  }
+  const cancelIng = document.getElementById('cancel-edit-ing');
+  if(cancelIng) cancelIng.onclick = ()=>{ data.editingIngredientId = null; renderAll(); };
+
+  const copyPrompt = document.getElementById('copy-bulk-prompt');
+  if(copyPrompt) copyPrompt.onclick = ()=>{
+    const ta = document.getElementById('bulk-prompt');
+    ta.select();
+    navigator.clipboard && navigator.clipboard.writeText(ta.value).then(()=>{
+      copyPrompt.textContent = 'Copiado ✓';
+      setTimeout(()=>{ copyPrompt.textContent = 'Copiar prompt'; },1800);
+    }).catch(()=>{ document.execCommand('copy'); });
+  };
+  const importBulk = document.getElementById('import-bulk-json');
+  if(importBulk) importBulk.onclick = ()=>{
+    const ta = document.getElementById('bulk-json');
+    if(!ta.value.trim()){ bulkImportMsg = 'Pega primero el JSON devuelto por la IA.'; renderAll(); return; }
+    const res = importBulkIngredients(ta.value);
+    let msg = `${res.added} ingrediente(s) añadido(s).`;
+    if(res.skipped>0) msg += ` ${res.skipped} omitido(s) por nombre repetido.`;
+    if(res.errors.length>0) msg += ` ${res.errors.length} con error: ${res.errors.join(' ')}`;
+    bulkImportMsg = msg;
+    renderAll();
+  };
+
+  document.querySelectorAll('[data-edit-ing]').forEach(b=>{
+    b.onclick = ()=>{ data.editingIngredientId = b.dataset.editIng; renderAll(); };
+  });
+  document.querySelectorAll('[data-del-ing]').forEach(b=>{
+    b.onclick = ()=>{
+      if(!confirm('¿Borrar este ingrediente?')) return;
+      data.ingredients = data.ingredients.filter(i=>i.id!==b.dataset.delIng);
+      saveLocal(); renderAll();
+    };
+  });
+
+  // -------- Recetas --------
+  const addDraftIng = document.getElementById('add-draft-ing');
+  if(addDraftIng) addDraftIng.onclick = ()=>{
+    data.recipeDraft.ingredients.push({ingredientId:'', quantity:0, unit:''});
+    renderAll();
+  };
+  document.querySelectorAll('[data-draft-ing]').forEach(sel=>{
+    sel.onchange = ()=>{
+      const idx = parseInt(sel.dataset.draftIng);
+      const ing = findIngredient(sel.value);
+      data.recipeDraft.ingredients[idx].ingredientId = sel.value;
+      data.recipeDraft.ingredients[idx].unit = ing ? ing.baseUnit : '';
+      renderAll();
+    };
+  });
+  document.querySelectorAll('[data-draft-qty]').forEach(inp=>{
+    inp.oninput = ()=>{ data.recipeDraft.ingredients[parseInt(inp.dataset.draftQty)].quantity = parseFloat(inp.value)||0; renderAll(); };
+  });
+  document.querySelectorAll('[data-draft-unit]').forEach(sel=>{
+    sel.onchange = ()=>{ data.recipeDraft.ingredients[parseInt(sel.dataset.draftUnit)].unit = sel.value; renderAll(); };
+  });
+  document.querySelectorAll('[data-draft-rm]').forEach(b=>{
+    b.onclick = ()=>{ data.recipeDraft.ingredients.splice(parseInt(b.dataset.draftRm),1); renderAll(); };
+  });
+  const addStep = document.getElementById('add-draft-step');
+  if(addStep) addStep.onclick = ()=>{ data.recipeDraft.steps.push(''); renderAll(); };
+  document.querySelectorAll('[data-draft-step]').forEach(ta=>{
+    ta.oninput = ()=>{ data.recipeDraft.steps[parseInt(ta.dataset.draftStep)] = ta.value; };
+  });
+  document.querySelectorAll('[data-draft-rmstep]').forEach(b=>{
+    b.onclick = ()=>{ data.recipeDraft.steps.splice(parseInt(b.dataset.draftRmstep),1); renderAll(); };
+  });
+  const nameInp = document.getElementById('draft-name');
+  if(nameInp) nameInp.oninput = ()=>{ data.recipeDraft.name = nameInp.value; };
+  const catInp = document.getElementById('draft-category');
+  if(catInp) catInp.oninput = ()=>{ data.recipeDraft.category = catInp.value; };
+  const servInp = document.getElementById('draft-servings');
+  if(servInp) servInp.oninput = ()=>{ data.recipeDraft.servings = parseInt(servInp.value)||1; renderAll(); };
+
+  const fRec = document.getElementById('form-receta');
+  if(fRec) fRec.onsubmit = (e)=>{
+    e.preventDefault();
+    const draft = data.recipeDraft;
+    if(!draft.name.trim()){ alert('Ponle un nombre a la receta.'); return; }
+    const obj = {
+      id: data.editingRecipeId || uid(),
+      name: draft.name.trim(), category: draft.category, servings: draft.servings||1,
+      ingredients: draft.ingredients.filter(i=>i.ingredientId),
+      steps: draft.steps.filter(s=>s.trim())
+    };
+    if(data.editingRecipeId){
+      const idx = data.recipes.findIndex(r=>r.id===obj.id);
+      data.recipes[idx] = obj; data.editingRecipeId = null;
+    } else {
+      data.recipes.push(obj);
+    }
+    data.recipeDraft = null;
+    saveLocal(); renderAll();
+  };
+  const cancelRec = document.getElementById('cancel-recipe');
+  if(cancelRec) cancelRec.onclick = ()=>{ data.editingRecipeId = null; data.recipeDraft = null; renderAll(); };
+  document.querySelectorAll('[data-edit-recipe]').forEach(b=>{
+    b.onclick = ()=>{ data.editingRecipeId = b.dataset.editRecipe; data.recipeDraft = null; renderAll(); window.scrollTo(0,0); };
+  });
+  document.querySelectorAll('[data-del-recipe]').forEach(b=>{
+    b.onclick = ()=>{
+      if(!confirm('¿Borrar esta receta?')) return;
+      data.recipes = data.recipes.filter(r=>r.id!==b.dataset.delRecipe);
+      saveLocal(); renderAll();
+    };
+  });
+
+  // -------- Planificador --------
+  const wprev = document.getElementById('week-prev');
+  if(wprev) wprev.onclick = ()=>{ weekStart = addDays(weekStart,-7); renderAll(); };
+  const wnext = document.getElementById('week-next');
+  if(wnext) wnext.onclick = ()=>{ weekStart = addDays(weekStart,7); renderAll(); };
+  const p0name = document.getElementById('profile-name-0');
+  if(p0name) p0name.oninput = ()=>{ data.profiles[0].name = p0name.value || 'Persona 1'; saveLocal(); };
+  const p1name = document.getElementById('profile-name-1');
+  if(p1name) p1name.oninput = ()=>{ data.profiles[1].name = p1name.value || 'Persona 2'; saveLocal(); };
+
+  document.querySelectorAll('[data-plan-day]').forEach(sel=>{
+    sel.onchange = ()=>{
+      const day = sel.dataset.planDay, slot = sel.dataset.planSlot, profileId = sel.dataset.planProfile;
+      const entry = ensureSlot(day, slot);
+      entry[profileId] = {recipeId: sel.value, servings: 1};
+      saveLocal(); renderAll();
+    };
+  });
+  document.querySelectorAll('[data-plan-equalize]').forEach(b=>{
+    b.onclick = ()=>{
+      const [day, slot] = b.dataset.planEqualize.split('|');
+      const [p1,p2] = data.profiles;
+      const entry = ensureSlot(day, slot);
+      entry[p2.id] = Object.assign({}, entry[p1.id]);
+      saveLocal(); renderAll();
+    };
+  });
+
+  // -------- Lista de compras --------
+  document.querySelectorAll('[data-shop-check]').forEach(cb=>{
+    cb.onchange = ()=>{
+      data.shoppingChecked[cb.dataset.shopCheck] = cb.checked;
+      saveLocal(); renderAll();
+    };
+  });
+
+  // -------- Sincronización --------
+  const dConnect = document.getElementById('drive-connect');
+  if(dConnect) dConnect.onclick = ()=>{
+    initTokenClientOnce();
+    if(tokenClient) tokenClient.requestAccessToken({prompt: accessToken ? '' : 'consent'});
+  };
+  const dSave = document.getElementById('drive-save');
+  if(dSave) dSave.onclick = driveSave;
+  const dLoad = document.getElementById('drive-load');
+  if(dLoad) dLoad.onclick = driveLoad;
+  const exp = document.getElementById('export-json');
+  if(exp) exp.onclick = ()=>{
+    const blob = new Blob([JSON.stringify({ingredients:data.ingredients,recipes:data.recipes,mealPlan:data.mealPlan,shoppingChecked:data.shoppingChecked,profiles:data.profiles},null,2)],{type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'nutricion-datos.json'; a.click();
+  };
+  const imp = document.getElementById('import-json');
+  if(imp) imp.onchange = (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const json = JSON.parse(reader.result);
+        data.ingredients = json.ingredients||[]; data.recipes = json.recipes||[];
+        data.mealPlan = json.mealPlan||{}; data.shoppingChecked = json.shoppingChecked||{};
+        if(json.profiles && json.profiles.length===2) data.profiles = json.profiles;
+        migrateMealPlan(data);
+        saveLocal(); renderAll();
+      }catch(err){ alert('El archivo no es un JSON válido.'); }
+    };
+    reader.readAsText(file);
+  };
+}
+
+/* ---------------------------------------------------------------
+   ARRANQUE
+--------------------------------------------------------------- */
+renderAll();
+window.addEventListener('load', initTokenClientOnce);
+</script>
+</body>
+</html>
