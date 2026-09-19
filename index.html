@@ -137,6 +137,16 @@
   .statusdot{width:8px;height:8px;border-radius:50%;background:#B9B29B;}
   .statusdot.on{background:var(--moss);}
   .searchbox{margin-bottom:14px;}
+  .verified-badge{color:#2C6E3F;font-weight:600;font-size:.8rem;}
+  .importitem{border:1px solid var(--line);border-radius:4px;padding:12px 14px;margin-bottom:10px;background:#fff;}
+  .importitem .ainame{font-weight:600;color:var(--moss-dark);}
+  .importitem .ainfo{font-size:.78rem;color:var(--ink-soft);margin:2px 0 8px 0;}
+  .radiogroup label{display:flex;align-items:center;gap:6px;font-size:.82rem;font-weight:400;margin:4px 0;color:var(--ink);}
+  .radiogroup input{width:auto;}
+  .matchnote{font-size:.78rem;color:var(--ink-soft);margin-top:4px;}
+  .statusrow{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0;}
+  .chip{background:#fff;border:1px solid var(--line-strong);border-radius:20px;padding:3px 9px;font-size:.68rem;cursor:pointer;color:var(--ink-soft);font-family:'Inter',sans-serif;}
+  .chip.chip-active{background:var(--moss);border-color:var(--moss);color:#fff;font-weight:600;}
   ::placeholder{color:#9C9887;}
   @media (max-width:760px){
     .app{grid-template-columns:1fr;}
@@ -185,6 +195,30 @@ Responde ÚNICAMENTE con el JSON (sin texto adicional, sin markdown, sin \`\`\`)
 Alimentos:
 - (pega aquí tu lista de alimentos, uno por línea)`;
 
+const BULK_RECIPE_PROMPT = `Te voy a compartir un video de redes sociales (o una descripción) de una receta de cocina. Devuélveme ÚNICAMENTE un JSON (sin texto adicional, sin markdown, sin \`\`\`) con este formato exacto:
+
+{
+  "recipeName": "nombre de la receta",
+  "category": "ej. Almuerzo, Desayuno, Postre",
+  "servings": 4,
+  "steps": ["paso 1...", "paso 2...", "..."],
+  "ingredients": [
+    {
+      "name": "nombre del ingrediente",
+      "grams": 100,
+      "baseUnit": "g",
+      "kcal100": 0, "protein100": 0, "carbs100": 0, "fat100": 0, "fiber100": 0
+    }
+  ],
+  "totalMacros": { "kcal": 0, "protein": 0, "carbs": 0, "fat": 0 }
+}
+
+Reglas:
+- "grams" es la cantidad de ese ingrediente usada en TODA la receta, siempre convertida a gramos (o mililitros si es líquido, usando baseUnit "ml"). Nada de tazas ni cucharadas, solo el número en gramos/mililitros.
+- kcal100/protein100/carbs100/fat100/fiber100 son el valor nutricional por cada 100 g o 100 ml de ESE ingrediente individual (no de la receta completa).
+- "totalMacros" son tus macros estimadas para la receta COMPLETA (todas las porciones juntas), como referencia para comparar.
+- No agregues explicaciones ni comentarios, solo el JSON.`;
+
 /* ---------------------------------------------------------------
    ESTADO Y PERSISTENCIA LOCAL
 --------------------------------------------------------------- */
@@ -193,7 +227,8 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function defaultData(){
   return {
     ingredients: [], recipes: [], mealPlan: {}, shoppingChecked: {}, driveFileId: null, lastSync: null,
-    profiles: [ {id:'p1', name:'Persona 1'}, {id:'p2', name:'Persona 2'} ]
+    profiles: [ {id:'p1', name:'Persona 1'}, {id:'p2', name:'Persona 2'} ],
+    inventory: {} // ingredientId -> gramos en despensa
   };
 }
 
@@ -217,9 +252,30 @@ function migrateMealPlan(d){
     const dayPlan = d.mealPlan[day];
     Object.keys(dayPlan).forEach(slot=>{
       const entry = dayPlan[slot];
+      // v0 -> v1: formato de un solo usuario {recipeId,servings} a formato por perfil.
       if(entry && entry.recipeId && !entry[p1.id] && !entry[p2.id]){
         dayPlan[slot] = { [p1.id]: {recipeId:entry.recipeId, servings:entry.servings||1}, [p2.id]: {recipeId:entry.recipeId, servings:entry.servings||1} };
       }
+      // v1 -> v2: {recipeId,servings} por perfil a {recipeId,status,amounts} con gramos por ingrediente.
+      [p1,p2].forEach(prof=>{
+        const a = dayPlan[slot] && dayPlan[slot][prof.id];
+        if(a && a.recipeId && !a.amounts){
+          const recipe = (d.recipes||[]).find(r=>r.id===a.recipeId);
+          const amounts = {};
+          if(recipe){
+            (recipe.ingredients||[]).forEach(ri=>{
+              const ing = (d.ingredients||[]).find(i=>i.id===ri.ingredientId);
+              if(!ing) return;
+              const totalGrams = ri.unit===ing.baseUnit ? ri.quantity : ((ing.measures||[]).find(m=>m.label===ri.unit)||{grams:1}).grams*ri.quantity;
+              amounts[ri.ingredientId] = recipe.servings>0 ? (totalGrams/recipe.servings)*(a.servings||1) : totalGrams*(a.servings||1);
+            });
+          }
+          dayPlan[slot][prof.id] = { recipeId:a.recipeId, status:'planificado', amounts, deducted:false };
+        }
+        // asegurar que exista el flag "deducted" aunque la asignación ya estuviera en formato v2
+        const a2 = dayPlan[slot] && dayPlan[slot][prof.id];
+        if(a2 && a2.deducted===undefined) a2.deducted = false;
+      });
     });
   });
 }
@@ -228,6 +284,9 @@ let data = loadLocal();
 let currentTab = "ingredientes";
 let weekStart = getMonday(new Date());
 let bulkImportMsg = "";
+let pendingRecipeImport = null; // estado transitorio del asistente de carga de receta por video
+let plannerSelection = null; // {day, slot, profileId} — celda abierta en el panel de detalle del planificador
+let kitchenDay = null; // fecha (iso) seleccionada en la vista de cocina
 
 function saveLocal(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -253,8 +312,10 @@ function fmtShort(d){ return d.toLocaleDateString('es-ES',{day:'numeric',month:'
 --------------------------------------------------------------- */
 const TABS = [
   ["ingredientes","Ingredientes"],
+  ["despensa","Despensa"],
   ["recetas","Recetas"],
   ["planificador","Planificador semanal"],
+  ["cocina","Cocina y cumplimiento"],
   ["compras","Lista de compras"],
   ["sync","Sincronización"]
 ];
@@ -266,7 +327,7 @@ function renderNav(){
     const b = document.createElement('button');
     b.className = 'navbtn' + (currentTab===key ? ' active':'');
     b.innerHTML = '<span class="dot"></span>' + label;
-    b.onclick = ()=>{ currentTab = key; renderAll(); };
+    b.onclick = ()=>{ currentTab = key; renderAll(); window.scrollTo(0,0); };
     nav.appendChild(b);
   });
 }
@@ -275,8 +336,10 @@ function renderAll(){
   renderNav();
   const main = document.getElementById('main');
   if(currentTab==='ingredientes') main.innerHTML = viewIngredientes();
+  else if(currentTab==='despensa') main.innerHTML = viewDespensa();
   else if(currentTab==='recetas') main.innerHTML = viewRecetas();
   else if(currentTab==='planificador') main.innerHTML = viewPlanificador();
+  else if(currentTab==='cocina') main.innerHTML = viewCocina();
   else if(currentTab==='compras') main.innerHTML = viewCompras();
   else if(currentTab==='sync') main.innerHTML = viewSync();
   attachHandlers();
@@ -286,6 +349,43 @@ function renderAll(){
    CÁLCULO DE MACROS
 --------------------------------------------------------------- */
 function findIngredient(id){ return data.ingredients.find(i=>i.id===id); }
+
+function normalizeName(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+
+function levenshtein(a,b){
+  const m = a.length, n = b.length;
+  if(m===0) return n; if(n===0) return m;
+  const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      const cost = a[i-1]===b[j-1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
+    }
+  }
+  return dp[m][n];
+}
+
+function nameSimilarity(a,b){
+  const na = normalizeName(a), nb = normalizeName(b);
+  if(!na || !nb) return 0;
+  if(na===nb) return 1;
+  const dist = levenshtein(na,nb);
+  const maxLen = Math.max(na.length, nb.length) || 1;
+  let score = 1 - dist/maxLen;
+  if(na.includes(nb) || nb.includes(na)) score = Math.max(score, 0.78);
+  return score;
+}
+
+// Devuelve los ingredientes existentes más parecidos a `name`, ordenados de mayor a menor similitud.
+function findSimilarIngredients(name, limit){
+  const scored = data.ingredients.map(ing=>({id:ing.id, score:nameSimilarity(ing.name,name)}));
+  scored.sort((a,b)=>b.score-a.score);
+  return scored.filter(s=>s.score>=0.4).slice(0, limit||5);
+}
 
 function gramsForEntry(ing, quantity, unit){
   if(!ing) return 0;
@@ -321,6 +421,249 @@ function calcRecipeTotals(recipe){
 function round1(n){ return Math.round(n*10)/10; }
 
 /* ---------------------------------------------------------------
+   ASISTENTE: CARGA MASIVA DE UNA RECETA (DESDE VIDEO + IA)
+--------------------------------------------------------------- */
+
+// Analiza el JSON pegado por el usuario y arma el estado del asistente,
+// buscando coincidencias por nombre contra los ingredientes existentes.
+function analyzeRecipeImport(rawText){
+  let json;
+  try{
+    const cleaned = rawText.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    json = JSON.parse(cleaned);
+  }catch(e){
+    return { error: 'El texto pegado no es un JSON válido.' };
+  }
+  if(!json || !Array.isArray(json.ingredients) || json.ingredients.length===0){
+    return { error: 'El JSON no tiene un array "ingredients" con al menos un ingrediente.' };
+  }
+
+  const items = json.ingredients.map(ai=>{
+    const matches = findSimilarIngredients(ai.name, 5);
+    const exact = matches.find(m=>m.score>=0.99);
+    let selection = 'new';
+    let useAiData = true;
+    if(exact){
+      selection = exact.id;
+      const ing = findIngredient(exact.id);
+      useAiData = false; // por defecto conservamos lo que ya existe
+      if(ing && ing.verified) useAiData = false;
+    }
+    return {
+      ai: {
+        name: String(ai.name||'').trim(),
+        grams: parseFloat(ai.grams)||0,
+        baseUnit: ai.baseUnit==='ml' ? 'ml' : 'g',
+        kcal100: parseFloat(ai.kcal100)||0,
+        protein100: parseFloat(ai.protein100)||0,
+        carbs100: parseFloat(ai.carbs100)||0,
+        fat100: parseFloat(ai.fat100)||0,
+        fiber100: parseFloat(ai.fiber100)||0
+      },
+      matches, selection, useAiData
+    };
+  });
+
+  return {
+    error: null,
+    meta: {
+      name: String(json.recipeName||'').trim(),
+      category: String(json.category||'').trim(),
+      servings: parseInt(json.servings)||1,
+      steps: Array.isArray(json.steps) ? json.steps.filter(s=>String(s).trim()) : []
+    },
+    aiTotal: json.totalMacros ? {
+      kcal: parseFloat(json.totalMacros.kcal)||0, protein: parseFloat(json.totalMacros.protein)||0,
+      carbs: parseFloat(json.totalMacros.carbs)||0, fat: parseFloat(json.totalMacros.fat)||0
+    } : null,
+    items
+  };
+}
+
+// Perfil nutricional "efectivo" que se usará para un ítem del asistente,
+// según si se asignó a un ingrediente existente (y con qué fuente de datos) o se creará uno nuevo.
+function effectiveProfileForItem(item){
+  if(item.selection === 'new'){
+    return { kcal100:item.ai.kcal100, protein100:item.ai.protein100, carbs100:item.ai.carbs100, fat100:item.ai.fat100, fiber100:item.ai.fiber100 };
+  }
+  const ing = findIngredient(item.selection);
+  if(!ing) return { kcal100:item.ai.kcal100, protein100:item.ai.protein100, carbs100:item.ai.carbs100, fat100:item.ai.fat100, fiber100:item.ai.fiber100 };
+  if(ing.verified || !item.useAiData){
+    return { kcal100:ing.kcal100, protein100:ing.protein100, carbs100:ing.carbs100, fat100:ing.fat100, fiber100:ing.fiber100 };
+  }
+  return { kcal100:item.ai.kcal100, protein100:item.ai.protein100, carbs100:item.ai.carbs100, fat100:item.ai.fat100, fiber100:item.ai.fiber100 };
+}
+
+function previewImportTotals(pending){
+  const total = {kcal:0,protein:0,carbs:0,fat:0};
+  pending.items.forEach(item=>{
+    const p = effectiveProfileForItem(item);
+    const f = item.ai.grams/100;
+    total.kcal += (p.kcal100||0)*f; total.protein += (p.protein100||0)*f;
+    total.carbs += (p.carbs100||0)*f; total.fat += (p.fat100||0)*f;
+  });
+  return total;
+}
+
+// Aplica las decisiones del asistente: crea/actualiza ingredientes y guarda la receta final.
+function confirmRecipeImport(){
+  const pending = pendingRecipeImport;
+  const recipeIngredients = [];
+
+  pending.items.forEach(item=>{
+    let ingredientId;
+    if(item.selection === 'new'){
+      const created = {
+        id: uid(), name: item.ai.name, category: '', baseUnit: item.ai.baseUnit,
+        kcal100: item.ai.kcal100, protein100: item.ai.protein100, carbs100: item.ai.carbs100,
+        fat100: item.ai.fat100, fiber100: item.ai.fiber100, measures: [], verified: false
+      };
+      data.ingredients.push(created);
+      ingredientId = created.id;
+    } else {
+      const ing = findIngredient(item.selection);
+      ingredientId = ing.id;
+      if(item.useAiData && !ing.verified){
+        ing.kcal100 = item.ai.kcal100; ing.protein100 = item.ai.protein100;
+        ing.carbs100 = item.ai.carbs100; ing.fat100 = item.ai.fat100; ing.fiber100 = item.ai.fiber100;
+      }
+    }
+    const ingFinal = findIngredient(ingredientId);
+    recipeIngredients.push({ ingredientId, quantity: item.ai.grams, unit: ingFinal.baseUnit });
+  });
+
+  const recipe = {
+    id: uid(), name: pending.meta.name || 'Receta sin nombre', category: pending.meta.category,
+    servings: pending.meta.servings || 1, ingredients: recipeIngredients, steps: pending.meta.steps
+  };
+  data.recipes.push(recipe);
+  pendingRecipeImport = null;
+  saveLocal();
+}
+
+function renderRecipeImportCard(){
+  if(!pendingRecipeImport){
+    return `<div class="card">
+      <div class="cardhead"><h3>Carga masiva de receta (desde video)</h3></div>
+      <p class="muted">Copia el prompt, pégalo junto con el video o una descripción de la receta en tu IA de confianza, y pega aquí el JSON que te devuelva.</p>
+      <label>Prompt para la IA</label>
+      <textarea id="recipe-import-prompt" readonly rows="8" style="font-family:monospace;font-size:.76rem;">${escapeHtml(BULK_RECIPE_PROMPT)}</textarea>
+      <button type="button" class="btn secondary" id="copy-recipe-prompt" style="margin:8px 0 18px 0;">Copiar prompt</button>
+
+      <label>Pega aquí el JSON que te devolvió la IA</label>
+      <textarea id="recipe-import-json" rows="8" placeholder='{"recipeName":"...", "ingredients":[...], ...}'></textarea>
+      <div id="recipe-import-error" class="muted" style="margin:6px 0;color:var(--rust);"></div>
+      <button type="button" class="btn" id="analyze-recipe-json" style="margin-top:6px;">Analizar receta</button>
+    </div>`;
+  }
+
+  const p = pendingRecipeImport;
+  const itemsHtml = p.items.map((item,idx)=>{
+    const selectedIsExisting = item.selection !== 'new';
+    const ing = selectedIsExisting ? findIngredient(item.selection) : null;
+    const isVerified = ing && ing.verified;
+
+    const options = ['<option value="new">+ Crear ingrediente nuevo</option>']
+      .concat(item.matches.map(m=>{
+        const mi = findIngredient(m.id);
+        if(!mi) return '';
+        const label = `${mi.name}${mi.verified?' ✓ verificado':''} — ${Math.round(m.score*100)}% similar`;
+        return `<option value="${mi.id}" ${item.selection===mi.id?'selected':''}>${escapeHtml(label)}</option>`;
+      }));
+    if(item.selection==='new') options[0] = options[0].replace('<option value="new">','<option value="new" selected>');
+
+    let sourceHtml = '';
+    if(selectedIsExisting && ing){
+      if(isVerified){
+        sourceHtml = `<p class="matchnote">Ingrediente verificado ✓ — se usará su información nutricional actual y no se modificará.</p>`;
+      } else {
+        sourceHtml = `<div class="radiogroup">
+          <label><input type="radio" name="src-${idx}" value="existing" data-import-source="${idx}" ${!item.useAiData?'checked':''}> Usar datos existentes (${round1(ing.kcal100)} kcal/100${ing.baseUnit})</label>
+          <label><input type="radio" name="src-${idx}" value="ai" data-import-source="${idx}" ${item.useAiData?'checked':''}> Usar datos de la IA (${round1(item.ai.kcal100)} kcal/100${item.ai.baseUnit}) y actualizar el ingrediente</label>
+        </div>`;
+      }
+    } else if(!selectedIsExisting){
+      sourceHtml = `<p class="matchnote">Se creará un ingrediente nuevo con los datos que dio la IA.</p>`;
+    }
+
+    return `<div class="importitem">
+      <div class="ainame">${escapeHtml(item.ai.name)}</div>
+      <div class="ainfo">IA: ${item.ai.grams} ${item.ai.baseUnit} usados en la receta · ${round1(item.ai.kcal100)} kcal /100${item.ai.baseUnit} · P${round1(item.ai.protein100)} C${round1(item.ai.carbs100)} G${round1(item.ai.fat100)}</div>
+      <label>Asignar a</label>
+      <select data-import-select="${idx}">${options.join('')}</select>
+      ${sourceHtml}
+    </div>`;
+  }).join('');
+
+  const preview = previewImportTotals(p);
+  const perServing = p.meta.servings>0 ? {
+    kcal:preview.kcal/p.meta.servings, protein:preview.protein/p.meta.servings,
+    carbs:preview.carbs/p.meta.servings, fat:preview.fat/p.meta.servings
+  } : preview;
+
+  return `<div class="card">
+    <div class="cardhead"><h3>Revisar receta importada</h3></div>
+    <div class="row c3">
+      <div><label>Nombre</label><input id="import-meta-name" value="${escapeHtml(p.meta.name)}"></div>
+      <div><label>Categoría</label><input id="import-meta-category" value="${escapeHtml(p.meta.category)}"></div>
+      <div><label>Porciones</label><input id="import-meta-servings" type="number" min="1" value="${p.meta.servings}"></div>
+    </div>
+
+    <label style="margin-top:10px;">Ingredientes detectados por la IA</label>
+    ${itemsHtml}
+
+    <div class="cardhead" style="border:none;padding:0;margin:10px 0 6px 0;"><h3 style="font-size:1rem;">Vista previa de macros por porción</h3></div>
+    <div class="macrobar">
+      <div class="macrobox"><div class="val">${round1(perServing.kcal)}</div><div class="lab">kcal</div></div>
+      <div class="macrobox"><div class="val">${round1(perServing.protein)} g</div><div class="lab">Proteína</div></div>
+      <div class="macrobox"><div class="val">${round1(perServing.carbs)} g</div><div class="lab">Carbos</div></div>
+      <div class="macrobox"><div class="val">${round1(perServing.fat)} g</div><div class="lab">Grasa</div></div>
+    </div>
+    ${p.aiTotal ? `<p class="muted" style="margin-top:8px;">La IA había estimado para la receta completa: ${round1(p.aiTotal.kcal)} kcal · P${round1(p.aiTotal.protein)} C${round1(p.aiTotal.carbs)} G${round1(p.aiTotal.fat)} — compáralo con el cálculo de arriba (×${p.meta.servings} porciones) para detectar diferencias grandes.</p>` : ''}
+
+    <div style="margin-top:16px;">
+      <button class="btn" type="button" id="confirm-recipe-import">Confirmar y guardar receta</button>
+      <button class="btn secondary" type="button" id="cancel-recipe-import" style="margin-left:8px;">Cancelar</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------
+   VISTA: DESPENSA (INVENTARIO EN CASA)
+--------------------------------------------------------------- */
+function viewDespensa(){
+  const rows = data.ingredients.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(ing=>{
+    const stock = data.inventory[ing.id] || 0;
+    return `<tr>
+      <td><strong>${escapeHtml(ing.name)}</strong><div class="muted">${escapeHtml(ing.category||'')}</div></td>
+      <td><input type="number" step="1" style="width:100px" data-inv-set="${ing.id}" value="${round1(stock)}"> ${ing.baseUnit}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="toppanel"><div><h1>Despensa</h1><p class="muted">Lo que ya tienen en casa. La lista de compras resta esto de lo que hace falta, y al marcar una comida como "Comido" se descuenta automáticamente de aquí.</p></div></div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Agregar al inventario</h3></div>
+    <p class="muted">Útil después de ir al súper: suma la cantidad comprada a lo que ya tenían.</p>
+    <div class="row" style="grid-template-columns:2fr 1fr 1fr auto;">
+      <div><label>Ingrediente</label>
+        <select id="inv-add-ingredient"><option value="">Seleccionar...</option>${data.ingredients.map(i=>`<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('')}</select>
+      </div>
+      <div><label>Cantidad</label><input id="inv-add-qty" type="number" step="0.1" value="0"></div>
+      <div><label>Unidad</label><select id="inv-add-unit"><option value="">—</option></select></div>
+      <div style="display:flex;align-items:flex-end;"><button class="btn" type="button" id="inv-add-btn">Sumar al inventario</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Inventario actual (${data.ingredients.length})</h3></div>
+    ${data.ingredients.length===0 ? '<div class="empty">Agrega ingredientes primero en la pestaña Ingredientes.</div>' : `
+    <table><thead><tr><th>Ingrediente</th><th>En despensa</th></tr></thead><tbody>${rows}</tbody></table>`}
+  </div>`;
+}
+
+/* ---------------------------------------------------------------
    VISTA: INGREDIENTES
 --------------------------------------------------------------- */
 function viewIngredientes(){
@@ -333,6 +676,7 @@ function viewIngredientes(){
       <td>${round1(ing.carbs100||0)} g</td>
       <td>${round1(ing.fat100||0)} g</td>
       <td>${(ing.measures||[]).map(m=>escapeHtml(m.label)).join(', ')||'—'}</td>
+      <td>${ing.verified ? '<span class="verified-badge">✓ Verificado</span>' : '<span class="muted">—</span>'}</td>
       <td><button class="iconbtn" data-edit-ing="${ing.id}">Editar</button><button class="iconbtn" data-del-ing="${ing.id}">Borrar</button></td>
     </tr>`;
   }).join('');
@@ -363,6 +707,11 @@ function viewIngredientes(){
       </div>
       <div class="row c2">
         <div><label>Fibra g /100 (opcional)</label><input name="fiber100" type="number" step="0.1" value="0"></div>
+        <div style="display:flex;align-items:flex-end;">
+          <label style="display:flex;align-items:center;gap:8px;margin:0;font-weight:500;">
+            <input type="checkbox" name="verified" style="width:auto;"> Marcar como ingrediente verificado ✓
+          </label>
+        </div>
       </div>
       <button class="btn" type="submit">${data.editingIngredientId ? 'Guardar cambios':'Añadir ingrediente'}</button>
       ${data.editingIngredientId ? '<button class="btn secondary" type="button" id="cancel-edit-ing" style="margin-left:8px;">Cancelar</button>' : ''}
@@ -371,7 +720,7 @@ function viewIngredientes(){
 
   <div class="card">
     <div class="cardhead"><h3>Carga masiva con IA</h3></div>
-    <p class="muted">Copia el siguiente prompt, pégalo en tu IA de confianza junto con la lista de alimentos que quieras cargar, y pega aquí el JSON que te devuelva.</p>
+    <p class="muted">Copia el siguiente prompt, pégalo en tu IA de confianza junto con la lista de alimentos que quieras cargar, y pega aquí el JSON que te devuelva. Si un nombre ya existe en tu base, se actualizan sus datos en vez de crear un duplicado.</p>
     <label>Prompt para la IA</label>
     <textarea id="bulk-prompt" readonly rows="7" style="font-family:monospace;font-size:.78rem;">${escapeHtml(BULK_PROMPT)}</textarea>
     <button type="button" class="btn secondary" id="copy-bulk-prompt" style="margin:8px 0 18px 0;">Copiar prompt</button>
@@ -385,7 +734,7 @@ function viewIngredientes(){
   <div class="card">
     <div class="cardhead"><h3>Listado (${data.ingredients.length})</h3></div>
     ${data.ingredients.length===0 ? '<div class="empty">Todavía no has añadido ingredientes.</div>' : `
-    <table><thead><tr><th>Nombre</th><th>Unidad</th><th>Kcal</th><th>Prot.</th><th>Carb.</th><th>Grasa</th><th>Medidas</th><th></th></tr></thead>
+    <table><thead><tr><th>Nombre</th><th>Unidad</th><th>Kcal</th><th>Prot.</th><th>Carb.</th><th>Grasa</th><th>Medidas</th><th>Verificado</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>`}
   </div>`;
 }
@@ -399,19 +748,19 @@ function parseMeasures(str){
 }
 
 // Valida y normaliza el JSON pegado por el usuario (proveniente de una IA)
-// y agrega los ingredientes válidos a la base, evitando duplicados por nombre.
+// y agrega los ingredientes nuevos a la base; si el nombre ya existe, actualiza sus datos.
 function importBulkIngredients(rawText){
   let arr;
   try{
     let cleaned = rawText.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
     arr = JSON.parse(cleaned);
   }catch(e){
-    return { added:0, skipped:0, errors:['El texto pegado no es un JSON válido.'] };
+    return { added:0, updated:0, errors:['El texto pegado no es un JSON válido.'] };
   }
   if(!Array.isArray(arr)) arr = [arr];
 
-  const existingNames = new Set(data.ingredients.map(i=>i.name.trim().toLowerCase()));
-  let added = 0, skipped = 0;
+  const byName = new Map(data.ingredients.map(i=>[i.name.trim().toLowerCase(), i]));
+  let added = 0, updated = 0;
   const errors = [];
 
   arr.forEach((item,idx)=>{
@@ -420,14 +769,10 @@ function importBulkIngredients(rawText){
       return;
     }
     const nameKey = String(item.name).trim().toLowerCase();
-    if(existingNames.has(nameKey)){ skipped++; return; }
-
     const measures = Array.isArray(item.measures)
       ? item.measures.filter(m=>m && m.label && m.grams>0).map(m=>({label:String(m.label), grams:parseFloat(m.grams)||0}))
       : [];
-
-    data.ingredients.push({
-      id: uid(),
+    const fields = {
       name: String(item.name).trim(),
       category: item.category ? String(item.category).trim() : '',
       baseUnit: (item.baseUnit==='ml') ? 'ml' : 'g',
@@ -437,13 +782,27 @@ function importBulkIngredients(rawText){
       fat100: parseFloat(item.fat100)||0,
       fiber100: parseFloat(item.fiber100)||0,
       measures
-    });
-    existingNames.add(nameKey);
-    added++;
+    };
+
+    const existing = byName.get(nameKey);
+    if(existing){
+      if(existing.verified){
+        // Los ingredientes verificados no se sobrescriben con datos de la IA.
+        updated++;
+      } else {
+        Object.assign(existing, fields, {id: existing.id, verified: existing.verified});
+        updated++;
+      }
+    } else {
+      const created = Object.assign({id: uid(), verified:false}, fields);
+      data.ingredients.push(created);
+      byName.set(nameKey, created);
+      added++;
+    }
   });
 
-  if(added>0) saveLocal();
-  return { added, skipped, errors };
+  if(added>0 || updated>0) saveLocal();
+  return { added, updated, errors };
 }
 
 /* ---------------------------------------------------------------
@@ -505,6 +864,8 @@ function viewRecetas(){
   return `
   <div class="toppanel"><div><h1>Recetas</h1><p class="muted">Los macros se calculan automáticamente por porción, a partir de tu base de ingredientes.</p></div></div>
 
+  ${renderRecipeImportCard()}
+
   <div class="card">
     <div class="cardhead"><h3>${editing ? 'Editar receta':'Nueva receta'}</h3></div>
     <form id="form-receta">
@@ -550,8 +911,8 @@ function ensureSlot(day, slotKey){
   if(!data.mealPlan[day]) data.mealPlan[day] = {};
   if(!data.mealPlan[day][slotKey]) data.mealPlan[day][slotKey] = {};
   const [p1,p2] = data.profiles;
-  if(!data.mealPlan[day][slotKey][p1.id]) data.mealPlan[day][slotKey][p1.id] = {recipeId:'', servings:1};
-  if(!data.mealPlan[day][slotKey][p2.id]) data.mealPlan[day][slotKey][p2.id] = {recipeId:'', servings:1};
+  if(!data.mealPlan[day][slotKey][p1.id]) data.mealPlan[day][slotKey][p1.id] = {recipeId:'', status:'', amounts:{}, deducted:false};
+  if(!data.mealPlan[day][slotKey][p2.id]) data.mealPlan[day][slotKey][p2.id] = {recipeId:'', status:'', amounts:{}, deducted:false};
   return data.mealPlan[day][slotKey];
 }
 
@@ -559,10 +920,56 @@ function recipeOptionsHtml(selectedId){
   return '<option value="">—</option>' + data.recipes.map(r=>`<option value="${r.id}" ${r.id===selectedId?'selected':''}>${escapeHtml(r.name)}</option>`).join('');
 }
 
+// Gramos "por defecto" de un ingrediente de receta para 1 porción base (sin ajustes personales).
+function defaultGramsForRecipeIngredient(recipe, ri){
+  const ing = findIngredient(ri.ingredientId);
+  if(!ing) return 0;
+  const totalGrams = gramsForEntry(ing, ri.quantity, ri.unit);
+  return recipe.servings>0 ? totalGrams/recipe.servings : totalGrams;
+}
+
+// Al elegir una receta para una persona, se inicializan sus gramos personales con la porción base (1x).
+function defaultAmountsForRecipe(recipe){
+  const amounts = {};
+  (recipe.ingredients||[]).forEach(ri=>{ amounts[ri.ingredientId] = round1(defaultGramsForRecipeIngredient(recipe, ri)); });
+  return amounts;
+}
+
+// Macros reales de una asignación (persona+comida), usando los gramos personalizados si existen.
+function calcAssignmentMacros(assignment){
+  const total = {kcal:0,protein:0,carbs:0,fat:0,fiber:0};
+  if(!assignment || !assignment.recipeId) return total;
+  const recipe = data.recipes.find(r=>r.id===assignment.recipeId);
+  if(!recipe) return total;
+  (recipe.ingredients||[]).forEach(ri=>{
+    const ing = findIngredient(ri.ingredientId);
+    if(!ing) return;
+    const defaultGrams = defaultGramsForRecipeIngredient(recipe, ri);
+    const grams = (assignment.amounts && assignment.amounts[ri.ingredientId]!=null) ? assignment.amounts[ri.ingredientId] : defaultGrams;
+    const m = macrosForGrams(ing, grams);
+    total.kcal+=m.kcal; total.protein+=m.protein; total.carbs+=m.carbs; total.fat+=m.fat; total.fiber+=m.fiber;
+  });
+  return total;
+}
+
+const STATUS_LABELS = { planificado:'Planificado', comido:'Comido', fuera:'Fuera / delivery' };
+
+// Descuenta (sign=-1) o repone (sign=+1) del inventario los ingredientes de una asignación ya cocinada.
+function applyInventoryDelta(assignment, sign){
+  if(!assignment || !assignment.recipeId) return;
+  const recipe = data.recipes.find(r=>r.id===assignment.recipeId);
+  if(!recipe) return;
+  (recipe.ingredients||[]).forEach(ri=>{
+    const defaultGrams = defaultGramsForRecipeIngredient(recipe, ri);
+    const grams = (assignment.amounts && assignment.amounts[ri.ingredientId]!=null) ? assignment.amounts[ri.ingredientId] : defaultGrams;
+    const current = data.inventory[ri.ingredientId] || 0;
+    data.inventory[ri.ingredientId] = Math.max(0, round1(current + sign*grams));
+  });
+}
+
 function viewPlanificador(){
   const days = [...Array(7)].map((_,i)=>addDays(weekStart,i));
   const [p1,p2] = data.profiles;
-  const dayTotals = {}; // key -> {p1:{},p2:{}}
 
   const dayCols = days.map((d,i)=>{
     const key = isoDate(d);
@@ -571,31 +978,36 @@ function viewPlanificador(){
     const slots = COMIDAS.map(([slotKey,slotLabel])=>{
       const entry = ensureSlot(key, slotKey);
       [p1,p2].forEach(prof=>{
-        const assigned = entry[prof.id];
-        const recipe = assigned.recipeId ? data.recipes.find(r=>r.id===assigned.recipeId) : null;
-        if(recipe){
-          const t = calcRecipeTotals(recipe);
-          const factor = (assigned.servings||1)/(recipe.servings||1);
+        const a = entry[prof.id];
+        if(a.recipeId && a.status!=='fuera'){
+          const t = calcAssignmentMacros(a);
           const tot = totals[prof.id];
-          tot.kcal += t.kcal*factor; tot.protein += t.protein*factor; tot.carbs += t.carbs*factor; tot.fat += t.fat*factor;
+          tot.kcal+=t.kcal; tot.protein+=t.protein; tot.carbs+=t.carbs; tot.fat+=t.fat;
         }
       });
       const sameChoice = entry[p1.id].recipeId === entry[p2.id].recipeId;
+
+      const profRow = (prof)=>{
+        const a = entry[prof.id];
+        const isSelected = plannerSelection && plannerSelection.day===key && plannerSelection.slot===slotKey && plannerSelection.profileId===prof.id;
+        return `<div class="profilerow">
+          <span class="profiletag">${escapeHtml(prof.name)}</span>
+          <select data-plan-day="${key}" data-plan-slot="${slotKey}" data-plan-profile="${prof.id}">${recipeOptionsHtml(a.recipeId)}</select>
+        </div>
+        ${a.recipeId ? `<div class="statusrow">
+          ${['planificado','comido','fuera'].map(st=>`<button type="button" class="chip ${a.status===st || (st==='planificado' && !a.status) ? 'chip-active':''}" data-set-status="${key}|${slotKey}|${prof.id}|${st}">${st==='planificado'?'Planificado':st==='comido'?'✓ Comido':'🍔 Fuera'}</button>`).join('')}
+        </div>
+        ${a.deducted ? '<div class="matchnote">📦 descontado del inventario</div>' : ''}
+        <button type="button" class="iconbtn" data-open-detail="${key}|${slotKey}|${prof.id}">${isSelected?'▾ ':''}Ajustar porción</button>` : ''}`;
+      };
+
       return `<div class="slot">
         <div class="slotlabel">${slotLabel}</div>
-        <div class="profilerow">
-          <span class="profiletag">${escapeHtml(p1.name)}</span>
-          <select data-plan-day="${key}" data-plan-slot="${slotKey}" data-plan-profile="${p1.id}">${recipeOptionsHtml(entry[p1.id].recipeId)}</select>
-        </div>
-        <div class="profilerow">
-          <span class="profiletag">${escapeHtml(p2.name)}</span>
-          <select data-plan-day="${key}" data-plan-slot="${slotKey}" data-plan-profile="${p2.id}">${recipeOptionsHtml(entry[p2.id].recipeId)}</select>
-        </div>
-        ${!sameChoice ? `<button type="button" class="iconbtn" data-plan-equalize="${key}|${slotKey}">Igualar comidas</button>` : ''}
+        ${profRow(p1)}
+        ${profRow(p2)}
+        ${(!sameChoice && entry[p1.id].recipeId && entry[p2.id].recipeId) ? `<button type="button" class="iconbtn" data-plan-equalize="${key}|${slotKey}">Igualar comidas</button>` : ''}
       </div>`;
     }).join('');
-
-    dayTotals[key] = totals;
 
     return `<div class="daycol">
       <h4>${DIAS[i]}<br><span class="muted" style="text-transform:none;font-weight:400;">${fmtShort(d)}</span></h4>
@@ -606,7 +1018,7 @@ function viewPlanificador(){
   }).join('');
 
   return `
-  <div class="toppanel"><div><h1>Planificador semanal</h1><p class="muted">Cada quien elige su comida en cada casilla. Si comen lo mismo, simplemente seleccionen la misma receta ambos, o usen "Igualar comidas".</p></div></div>
+  <div class="toppanel"><div><h1>Planificador semanal</h1><p class="muted">Cada quien elige su comida y puede ajustar los gramos de cada ingrediente para su propia porción. Marca si al final se cocinó, se salieron a comer, o quedó planificado.</p></div></div>
 
   <div class="card" style="margin-bottom:20px;">
     <div class="cardhead"><h3>Nombres</h3></div>
@@ -623,7 +1035,153 @@ function viewPlanificador(){
   </div>
 
   ${data.recipes.length===0 ? '<div class="empty">Crea al menos una receta para poder planificarla.</div>' : `<div class="planner-grid">${dayCols}</div>`}
+
+  ${renderPlannerDetailPanel(days)}
   `;
+}
+
+// Panel de detalle: ajustar gramos de cada ingrediente para una persona/comida, y moverla a otro día.
+function renderPlannerDetailPanel(weekDays){
+  if(!plannerSelection) return '';
+  const { day, slot, profileId } = plannerSelection;
+  const entry = ensureSlot(day, slot);
+  const a = entry[profileId];
+  const prof = data.profiles.find(p=>p.id===profileId);
+  const recipe = a.recipeId ? data.recipes.find(r=>r.id===a.recipeId) : null;
+  if(!recipe || !prof) return '';
+
+  const [slotKeyToLabel] = [Object.fromEntries(COMIDAS)];
+  const dayDate = new Date(day);
+
+  const rows = (recipe.ingredients||[]).map(ri=>{
+    const ing = findIngredient(ri.ingredientId);
+    if(!ing) return '';
+    const grams = (a.amounts && a.amounts[ri.ingredientId]!=null) ? a.amounts[ri.ingredientId] : defaultGramsForRecipeIngredient(recipe, ri);
+    return `<tr>
+      <td>${escapeHtml(ing.name)}</td>
+      <td><input type="number" step="1" style="width:90px" data-amount-ing="${ri.ingredientId}" value="${round1(grams)}"> ${ing.baseUnit}</td>
+      <td class="muted">porción base: ${round1(defaultGramsForRecipeIngredient(recipe, ri))} ${ing.baseUnit}</td>
+    </tr>`;
+  }).join('');
+
+  const t = calcAssignmentMacros(a);
+  const otherDays = weekDays.map(d=>isoDate(d)).filter(k=>k!==day);
+
+  return `<div class="card" id="planner-detail-panel" style="margin-top:20px;">
+    <div class="cardhead">
+      <h3>Ajustar porción — ${escapeHtml(prof.name)}, ${slotKeyToLabel[slot]} (${fmtShort(dayDate)})</h3>
+      <button class="iconbtn" id="close-detail">Cerrar</button>
+    </div>
+    <p class="muted">Receta base: <strong>${escapeHtml(recipe.name)}</strong> (${recipe.servings} porciones). Modifica los gramos para ajustar los macros de esta persona.</p>
+    <table><thead><tr><th>Ingrediente</th><th>Gramos para ${escapeHtml(prof.name)}</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+
+    <div class="macrobar" style="margin-top:14px;">
+      <div class="macrobox"><div class="val">${round1(t.kcal)}</div><div class="lab">kcal</div></div>
+      <div class="macrobox"><div class="val">${round1(t.protein)} g</div><div class="lab">Proteína</div></div>
+      <div class="macrobox"><div class="val">${round1(t.carbs)} g</div><div class="lab">Carbos</div></div>
+      <div class="macrobox"><div class="val">${round1(t.fat)} g</div><div class="lab">Grasa</div></div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <label>Mover esta comida a otro día (mismo horario)</label>
+      <div style="display:flex;gap:8px;">
+        <select id="move-target-day">${otherDays.map(k=>`<option value="${k}">${fmtShort(new Date(k))}</option>`).join('')}</select>
+        <button class="btn secondary" type="button" id="move-meal-btn">Mover aquí</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------
+   VISTA: COCINA (preparación combinada) Y CUMPLIMIENTO
+--------------------------------------------------------------- */
+function computeAdherenceStats(){
+  const todayKey = isoDate(new Date());
+  const [p1,p2] = data.profiles;
+  let comido=0, fuera=0, sinRegistrar=0;
+  Object.keys(data.mealPlan||{}).forEach(day=>{
+    if(day > todayKey) return; // solo días de hoy hacia atrás
+    const plan = data.mealPlan[day];
+    COMIDAS.forEach(([slotKey])=>{
+      const slot = plan[slotKey]; if(!slot) return;
+      [p1,p2].forEach(prof=>{
+        const a = slot[prof.id];
+        if(!a || !a.recipeId) return;
+        if(a.status==='comido') comido++;
+        else if(a.status==='fuera') fuera++;
+        else sinRegistrar++;
+      });
+    });
+  });
+  const total = comido+fuera+sinRegistrar;
+  return { comido, fuera, sinRegistrar, total, pct: total>0 ? Math.round((comido/total)*100) : null };
+}
+
+function viewCocina(){
+  const days = [...Array(7)].map((_,i)=>addDays(weekStart,i));
+  if(!kitchenDay || !days.some(d=>isoDate(d)===kitchenDay)){
+    const todayInWeek = days.find(d=>isoDate(d)===isoDate(new Date()));
+    kitchenDay = isoDate(todayInWeek || days[0]);
+  }
+  const [p1,p2] = data.profiles;
+  const plan = data.mealPlan[kitchenDay] || {};
+
+  const dayPicker = days.map((d,i)=>{
+    const key = isoDate(d);
+    return `<button type="button" class="chip ${key===kitchenDay?'chip-active':''}" data-kitchen-day="${key}">${DIAS[i].slice(0,3)} ${fmtShort(d)}</button>`;
+  }).join('');
+
+  const slotsHtml = COMIDAS.map(([slotKey,slotLabel])=>{
+    const slot = plan[slotKey];
+    const a1 = slot && slot[p1.id], a2 = slot && slot[p2.id];
+    const active1 = a1 && a1.recipeId && a1.status!=='fuera';
+    const active2 = a2 && a2.recipeId && a2.status!=='fuera';
+    if(!active1 && !active2) return '';
+
+    let body;
+    if(active1 && active2 && a1.recipeId===a2.recipeId){
+      const recipe = data.recipes.find(r=>r.id===a1.recipeId);
+      const ingRows = (recipe.ingredients||[]).map(ri=>{
+        const ing = findIngredient(ri.ingredientId); if(!ing) return '';
+        const g1 = (a1.amounts && a1.amounts[ri.ingredientId]!=null) ? a1.amounts[ri.ingredientId] : defaultGramsForRecipeIngredient(recipe,ri);
+        const g2 = (a2.amounts && a2.amounts[ri.ingredientId]!=null) ? a2.amounts[ri.ingredientId] : defaultGramsForRecipeIngredient(recipe,ri);
+        return `<tr><td>${escapeHtml(ing.name)}</td><td><strong>${round1(g1+g2)} ${ing.baseUnit}</strong></td><td class="muted">${escapeHtml(p1.name)} ${round1(g1)} / ${escapeHtml(p2.name)} ${round1(g2)}</td></tr>`;
+      }).join('');
+      body = `<p class="muted">Misma receta para ambos: <strong>${escapeHtml(recipe.name)}</strong></p>
+        <table><thead><tr><th>Ingrediente</th><th>Total a preparar</th><th>Reparto</th></tr></thead><tbody>${ingRows}</tbody></table>`;
+    } else {
+      body = [ [p1,a1,active1], [p2,a2,active2] ].filter(([,,act])=>act).map(([prof,a])=>{
+        const recipe = data.recipes.find(r=>r.id===a.recipeId);
+        const ingRows = (recipe.ingredients||[]).map(ri=>{
+          const ing = findIngredient(ri.ingredientId); if(!ing) return '';
+          const g = (a.amounts && a.amounts[ri.ingredientId]!=null) ? a.amounts[ri.ingredientId] : defaultGramsForRecipeIngredient(recipe,ri);
+          return `<tr><td>${escapeHtml(ing.name)}</td><td>${round1(g)} ${ing.baseUnit}</td></tr>`;
+        }).join('');
+        return `<p class="muted" style="margin-top:8px;"><strong>${escapeHtml(prof.name)}:</strong> ${escapeHtml(recipe.name)}</p>
+          <table><thead><tr><th>Ingrediente</th><th>Cantidad</th></tr></thead><tbody>${ingRows}</tbody></table>`;
+      }).join('');
+    }
+
+    return `<div class="card"><div class="cardhead"><h3>${slotLabel}</h3></div>${body}</div>`;
+  }).join('');
+
+  const stats = computeAdherenceStats();
+
+  return `
+  <div class="toppanel"><div><h1>Cocina y cumplimiento</h1><p class="muted">Cantidades combinadas para cocinar una sola vez, y qué tanto se sigue el plan.</p></div></div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Modo preparación</h3></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">${dayPicker}</div>
+    ${slotsHtml || '<div class="empty">No hay comidas planificadas (ni marcadas como cocinadas) para este día.</div>'}
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h3>Historial de cumplimiento</h3></div>
+    ${stats.total===0 ? '<div class="empty">Todavía no hay comidas pasadas para evaluar.</div>' : `
+    <p>De <strong>${stats.total}</strong> comidas planificadas hasta hoy (entre ambos), <strong>${stats.comido}</strong> se cocinaron según el plan (<strong>${stats.pct}%</strong>), <strong>${stats.fuera}</strong> terminaron siendo comida fuera / delivery, y <strong>${stats.sinRegistrar}</strong> quedaron sin marcar.</p>
+    <p class="muted">Si el porcentaje de comida fuera es alto seguido, considera planificar menos días fijos a la semana y dejar más margen libre.</p>`}
+  </div>`;
 }
 
 /* ---------------------------------------------------------------
@@ -644,14 +1202,13 @@ function viewCompras(){
       if(!slot) return;
       [p1,p2].forEach(prof=>{
         const assigned = slot[prof.id];
-        if(!assigned || !assigned.recipeId) return;
+        if(!assigned || !assigned.recipeId || assigned.status==='fuera') return;
         const recipe = data.recipes.find(r=>r.id===assigned.recipeId);
         if(!recipe) return;
-        const factor = (assigned.servings||1)/(recipe.servings||1);
-        (recipe.ingredients||[]).forEach(entry=>{
-          const ing = findIngredient(entry.ingredientId);
+        (recipe.ingredients||[]).forEach(ri=>{
+          const ing = findIngredient(ri.ingredientId);
           if(!ing) return;
-          const grams = gramsForEntry(ing, entry.quantity, entry.unit) * factor;
+          const grams = (assigned.amounts && assigned.amounts[ri.ingredientId]!=null) ? assigned.amounts[ri.ingredientId] : defaultGramsForRecipeIngredient(recipe, ri);
           aggregate[ing.id] = (aggregate[ing.id]||0) + grams;
         });
       });
@@ -661,25 +1218,38 @@ function viewCompras(){
   const items = Object.keys(aggregate).map(ingId=>{
     const ing = findIngredient(ingId);
     if(!ing) return null;
-    const grams = aggregate[ingId];
-    const display = grams >= 1000 ? `${round1(grams/1000)} kg` : `${Math.round(grams)} ${ing.baseUnit}`;
+    const needed = aggregate[ingId];
+    const stock = data.inventory[ingId] || 0;
+    const toBuy = Math.max(0, needed - stock);
+    const fmt = (g)=> g >= 1000 ? `${round1(g/1000)} kg` : `${Math.round(g)} ${ing.baseUnit}`;
     const checkKey = `${weekKey}_${ingId}`;
     const checked = !!data.shoppingChecked[checkKey];
-    return {ing, grams, display, checkKey, checked};
+    return {ing, needed, stock, toBuy, display:fmt(toBuy), neededDisplay:fmt(needed), stockDisplay:fmt(stock), checkKey, checked};
   }).filter(Boolean).sort((a,b)=>a.ing.name.localeCompare(b.ing.name));
 
-  const listHtml = items.map(it=>`
+  const toBuyItems = items.filter(it=>it.toBuy>0);
+  const coveredItems = items.filter(it=>it.toBuy<=0);
+
+  const listHtml = toBuyItems.map(it=>`
     <div class="shopitem ${it.checked?'checked':''}">
       <input type="checkbox" data-shop-check="${it.checkKey}" ${it.checked?'checked':''}>
       <span class="name" style="flex:1;">${escapeHtml(it.ing.name)}</span>
-      <span class="muted">${it.display}</span>
+      <span class="muted">${it.display}${it.stock>0?` <span class="matchnote" style="display:inline;">(necesitas ${it.neededDisplay}, ya tienes ${it.stockDisplay})</span>`:''}</span>
+    </div>`).join('');
+
+  const coveredHtml = coveredItems.map(it=>`
+    <div class="shopitem checked">
+      <span class="verified-badge">✓</span>
+      <span class="name" style="flex:1;">${escapeHtml(it.ing.name)}</span>
+      <span class="muted">ya tienes suficiente (${it.stockDisplay} en despensa)</span>
     </div>`).join('');
 
   return `
-  <div class="toppanel"><div><h1>Lista de compras</h1><p class="muted">Generada desde el plan de la semana del ${fmtShort(weekStart)} al ${fmtShort(addDays(weekStart,6))}.</p></div></div>
+  <div class="toppanel"><div><h1>Lista de compras</h1><p class="muted">Generada desde el plan de la semana del ${fmtShort(weekStart)} al ${fmtShort(addDays(weekStart,6))}, restando lo que ya tienes en la despensa.</p></div></div>
   <div class="card">
-    ${items.length===0 ? '<div class="empty">No hay recetas planificadas esta semana todavía.</div>' : listHtml}
-  </div>`;
+    ${toBuyItems.length===0 ? '<div class="empty">No falta comprar nada esta semana (o no hay recetas planificadas).</div>' : listHtml}
+  </div>
+  ${coveredItems.length>0 ? `<div class="card"><div class="cardhead"><h3>Ya tienes en despensa (no hace falta comprar)</h3></div>${coveredHtml}</div>` : ''}`;
 }
 
 /* ---------------------------------------------------------------
@@ -745,7 +1315,7 @@ async function driveSave(){
     if(!data.driveFileId){ data.driveFileId = await driveFindFileId(); }
     const payload = JSON.stringify({
       ingredients:data.ingredients, recipes:data.recipes, mealPlan:data.mealPlan,
-      shoppingChecked:data.shoppingChecked, profiles:data.profiles
+      shoppingChecked:data.shoppingChecked, profiles:data.profiles, inventory:data.inventory
     });
     const boundary = "-------nutricion" + uid();
     const metadata = { name: DRIVE_FILENAME, mimeType: "application/json" };
@@ -790,6 +1360,7 @@ async function driveLoad(){
     data.mealPlan = json.mealPlan || {};
     data.shoppingChecked = json.shoppingChecked || {};
     if(json.profiles && json.profiles.length===2) data.profiles = json.profiles;
+    data.inventory = json.inventory || {};
     migrateMealPlan(data);
     saveLocal();
     syncStatus = "Datos cargados desde Drive";
@@ -810,6 +1381,33 @@ function escapeHtml(str){
    MANEJADORES DE EVENTOS (delegados tras cada render)
 --------------------------------------------------------------- */
 function attachHandlers(){
+  // -------- Despensa --------
+  document.querySelectorAll('[data-inv-set]').forEach(inp=>{
+    inp.onchange = ()=>{
+      data.inventory[inp.dataset.invSet] = parseFloat(inp.value)||0;
+      saveLocal(); renderAll();
+    };
+  });
+  const invAddIngredient = document.getElementById('inv-add-ingredient');
+  if(invAddIngredient) invAddIngredient.onchange = ()=>{
+    const ing = findIngredient(invAddIngredient.value);
+    const unitSel = document.getElementById('inv-add-unit');
+    if(!ing){ unitSel.innerHTML = '<option value="">—</option>'; return; }
+    const opts = [ing.baseUnit, ...(ing.measures||[]).map(m=>m.label)];
+    unitSel.innerHTML = opts.map(u=>`<option value="${u}">${u}</option>`).join('');
+  };
+  const invAddBtn = document.getElementById('inv-add-btn');
+  if(invAddBtn) invAddBtn.onclick = ()=>{
+    const ingId = document.getElementById('inv-add-ingredient').value;
+    const qty = parseFloat(document.getElementById('inv-add-qty').value)||0;
+    const unit = document.getElementById('inv-add-unit').value;
+    const ing = findIngredient(ingId);
+    if(!ing || qty<=0){ alert('Selecciona un ingrediente y una cantidad mayor a 0.'); return; }
+    const grams = gramsForEntry(ing, qty, unit || ing.baseUnit);
+    data.inventory[ingId] = round1((data.inventory[ingId]||0) + grams);
+    saveLocal(); renderAll();
+  };
+
   // -------- Ingredientes --------
   const fIng = document.getElementById('form-ingrediente');
   if(fIng){
@@ -821,6 +1419,7 @@ function attachHandlers(){
         fIng.protein100.value = ing.protein100; fIng.carbs100.value = ing.carbs100;
         fIng.fat100.value = ing.fat100; fIng.fiber100.value = ing.fiber100||0;
         fIng.measures.value = (ing.measures||[]).map(m=>`${m.label}=${m.grams}`).join(', ');
+        fIng.verified.checked = !!ing.verified;
       }
     }
     fIng.onsubmit = (e)=>{
@@ -836,7 +1435,8 @@ function attachHandlers(){
         carbs100: parseFloat(fd.get('carbs100'))||0,
         fat100: parseFloat(fd.get('fat100'))||0,
         fiber100: parseFloat(fd.get('fiber100'))||0,
-        measures: parseMeasures(fd.get('measures'))
+        measures: parseMeasures(fd.get('measures')),
+        verified: fIng.verified.checked
       };
       if(data.editingIngredientId){
         const idx = data.ingredients.findIndex(i=>i.id===obj.id);
@@ -865,15 +1465,19 @@ function attachHandlers(){
     const ta = document.getElementById('bulk-json');
     if(!ta.value.trim()){ bulkImportMsg = 'Pega primero el JSON devuelto por la IA.'; renderAll(); return; }
     const res = importBulkIngredients(ta.value);
-    let msg = `${res.added} ingrediente(s) añadido(s).`;
-    if(res.skipped>0) msg += ` ${res.skipped} omitido(s) por nombre repetido.`;
+    let msg = `${res.added} ingrediente(s) nuevo(s) añadido(s).`;
+    if(res.updated>0) msg += ` ${res.updated} actualizado(s) por nombre repetido.`;
     if(res.errors.length>0) msg += ` ${res.errors.length} con error: ${res.errors.join(' ')}`;
     bulkImportMsg = msg;
     renderAll();
   };
 
   document.querySelectorAll('[data-edit-ing]').forEach(b=>{
-    b.onclick = ()=>{ data.editingIngredientId = b.dataset.editIng; renderAll(); };
+    b.onclick = ()=>{
+      data.editingIngredientId = b.dataset.editIng; renderAll();
+      const f = document.getElementById('form-ingrediente');
+      if(f) f.scrollIntoView({behavior:'smooth', block:'start'});
+    };
   });
   document.querySelectorAll('[data-del-ing]').forEach(b=>{
     b.onclick = ()=>{
@@ -882,6 +1486,60 @@ function attachHandlers(){
       saveLocal(); renderAll();
     };
   });
+
+  // -------- Asistente de carga masiva de receta (video + IA) --------
+  const copyRecipePrompt = document.getElementById('copy-recipe-prompt');
+  if(copyRecipePrompt) copyRecipePrompt.onclick = ()=>{
+    const ta = document.getElementById('recipe-import-prompt');
+    ta.select();
+    navigator.clipboard && navigator.clipboard.writeText(ta.value).then(()=>{
+      copyRecipePrompt.textContent = 'Copiado ✓';
+      setTimeout(()=>{ copyRecipePrompt.textContent = 'Copiar prompt'; },1800);
+    }).catch(()=>{ document.execCommand('copy'); });
+  };
+  const analyzeBtn = document.getElementById('analyze-recipe-json');
+  if(analyzeBtn) analyzeBtn.onclick = ()=>{
+    const ta = document.getElementById('recipe-import-json');
+    const errBox = document.getElementById('recipe-import-error');
+    if(!ta.value.trim()){ errBox.textContent = 'Pega primero el JSON devuelto por la IA.'; return; }
+    const result = analyzeRecipeImport(ta.value);
+    if(result.error){ errBox.textContent = result.error; return; }
+    pendingRecipeImport = result;
+    renderAll();
+  };
+
+  document.querySelectorAll('[data-import-select]').forEach(sel=>{
+    sel.onchange = ()=>{
+      const idx = parseInt(sel.dataset.importSelect);
+      const item = pendingRecipeImport.items[idx];
+      item.selection = sel.value;
+      const ing = sel.value!=='new' ? findIngredient(sel.value) : null;
+      item.useAiData = ing && ing.verified ? false : (sel.value==='new' ? true : false);
+      renderAll();
+    };
+  });
+  document.querySelectorAll('[data-import-source]').forEach(radio=>{
+    radio.onchange = ()=>{
+      const idx = parseInt(radio.dataset.importSource);
+      pendingRecipeImport.items[idx].useAiData = radio.value==='ai';
+      renderAll();
+    };
+  });
+  const metaName = document.getElementById('import-meta-name');
+  if(metaName) metaName.oninput = ()=>{ pendingRecipeImport.meta.name = metaName.value; };
+  const metaCategory = document.getElementById('import-meta-category');
+  if(metaCategory) metaCategory.oninput = ()=>{ pendingRecipeImport.meta.category = metaCategory.value; };
+  const metaServings = document.getElementById('import-meta-servings');
+  if(metaServings) metaServings.oninput = ()=>{ pendingRecipeImport.meta.servings = parseInt(metaServings.value)||1; renderAll(); };
+
+  const confirmImport = document.getElementById('confirm-recipe-import');
+  if(confirmImport) confirmImport.onclick = ()=>{
+    if(!pendingRecipeImport.meta.name.trim()){ alert('Ponle un nombre a la receta antes de confirmar.'); return; }
+    confirmRecipeImport();
+    renderAll();
+  };
+  const cancelImport = document.getElementById('cancel-recipe-import');
+  if(cancelImport) cancelImport.onclick = ()=>{ pendingRecipeImport = null; renderAll(); };
 
   // -------- Recetas --------
   const addDraftIng = document.getElementById('add-draft-ing');
@@ -945,7 +1603,11 @@ function attachHandlers(){
   const cancelRec = document.getElementById('cancel-recipe');
   if(cancelRec) cancelRec.onclick = ()=>{ data.editingRecipeId = null; data.recipeDraft = null; renderAll(); };
   document.querySelectorAll('[data-edit-recipe]').forEach(b=>{
-    b.onclick = ()=>{ data.editingRecipeId = b.dataset.editRecipe; data.recipeDraft = null; renderAll(); window.scrollTo(0,0); };
+    b.onclick = ()=>{
+      data.editingRecipeId = b.dataset.editRecipe; data.recipeDraft = null; renderAll();
+      const f = document.getElementById('form-receta');
+      if(f) f.scrollIntoView({behavior:'smooth', block:'start'});
+    };
   });
   document.querySelectorAll('[data-del-recipe]').forEach(b=>{
     b.onclick = ()=>{
@@ -969,18 +1631,76 @@ function attachHandlers(){
     sel.onchange = ()=>{
       const day = sel.dataset.planDay, slot = sel.dataset.planSlot, profileId = sel.dataset.planProfile;
       const entry = ensureSlot(day, slot);
-      entry[profileId] = {recipeId: sel.value, servings: 1};
+      const old = entry[profileId];
+      if(old && old.deducted) applyInventoryDelta(old, 1); // si ya se había descontado, se repone antes de reasignar
+      const recipe = data.recipes.find(r=>r.id===sel.value);
+      entry[profileId] = { recipeId: sel.value, status: sel.value?'planificado':'', amounts: recipe ? defaultAmountsForRecipe(recipe) : {}, deducted:false };
+      if(plannerSelection && plannerSelection.day===day && plannerSelection.slot===slot && plannerSelection.profileId===profileId && !sel.value) plannerSelection = null;
       saveLocal(); renderAll();
     };
   });
+  document.querySelectorAll('[data-set-status]').forEach(b=>{
+    b.onclick = ()=>{
+      const [day, slot, profileId, status] = b.dataset.setStatus.split('|');
+      const entry = ensureSlot(day, slot);
+      const a = entry[profileId];
+      if(status==='comido' && !a.deducted){
+        applyInventoryDelta(a, -1);
+        a.deducted = true;
+      } else if(status!=='comido' && a.deducted){
+        applyInventoryDelta(a, 1);
+        a.deducted = false;
+      }
+      a.status = status;
+      saveLocal(); renderAll();
+    };
+  });
+  document.querySelectorAll('[data-open-detail]').forEach(b=>{
+    b.onclick = ()=>{
+      const [day, slot, profileId] = b.dataset.openDetail.split('|');
+      const same = plannerSelection && plannerSelection.day===day && plannerSelection.slot===slot && plannerSelection.profileId===profileId;
+      plannerSelection = same ? null : {day, slot, profileId};
+      renderAll();
+      if(!same){ const panel = document.getElementById('planner-detail-panel'); if(panel) panel.scrollIntoView({behavior:'smooth', block:'start'}); }
+    };
+  });
+  const closeDetail = document.getElementById('close-detail');
+  if(closeDetail) closeDetail.onclick = ()=>{ plannerSelection = null; renderAll(); };
+  document.querySelectorAll('[data-amount-ing]').forEach(inp=>{
+    inp.oninput = ()=>{
+      const { day, slot, profileId } = plannerSelection;
+      const entry = ensureSlot(day, slot);
+      if(!entry[profileId].amounts) entry[profileId].amounts = {};
+      entry[profileId].amounts[inp.dataset.amountIng] = parseFloat(inp.value)||0;
+      saveLocal(); renderAll();
+    };
+  });
+  const moveBtn = document.getElementById('move-meal-btn');
+  if(moveBtn) moveBtn.onclick = ()=>{
+    const targetDay = document.getElementById('move-target-day').value;
+    const { day, slot, profileId } = plannerSelection;
+    const sourceEntry = ensureSlot(day, slot);
+    const targetEntry = ensureSlot(targetDay, slot);
+    const moving = sourceEntry[profileId];
+    if(targetEntry[profileId].recipeId && !confirm('Ya hay algo planificado ese día para esa persona. ¿Reemplazarlo?')) return;
+    targetEntry[profileId] = moving;
+    sourceEntry[profileId] = {recipeId:'', status:'', amounts:{}};
+    plannerSelection = {day: targetDay, slot, profileId};
+    saveLocal(); renderAll();
+  };
   document.querySelectorAll('[data-plan-equalize]').forEach(b=>{
     b.onclick = ()=>{
       const [day, slot] = b.dataset.planEqualize.split('|');
       const [p1,p2] = data.profiles;
       const entry = ensureSlot(day, slot);
-      entry[p2.id] = Object.assign({}, entry[p1.id]);
+      entry[p2.id] = JSON.parse(JSON.stringify(entry[p1.id]));
       saveLocal(); renderAll();
     };
+  });
+
+  // -------- Cocina --------
+  document.querySelectorAll('[data-kitchen-day]').forEach(b=>{
+    b.onclick = ()=>{ kitchenDay = b.dataset.kitchenDay; renderAll(); };
   });
 
   // -------- Lista de compras --------
@@ -1003,7 +1723,7 @@ function attachHandlers(){
   if(dLoad) dLoad.onclick = driveLoad;
   const exp = document.getElementById('export-json');
   if(exp) exp.onclick = ()=>{
-    const blob = new Blob([JSON.stringify({ingredients:data.ingredients,recipes:data.recipes,mealPlan:data.mealPlan,shoppingChecked:data.shoppingChecked,profiles:data.profiles},null,2)],{type:'application/json'});
+    const blob = new Blob([JSON.stringify({ingredients:data.ingredients,recipes:data.recipes,mealPlan:data.mealPlan,shoppingChecked:data.shoppingChecked,profiles:data.profiles,inventory:data.inventory},null,2)],{type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = 'nutricion-datos.json'; a.click();
   };
@@ -1017,6 +1737,7 @@ function attachHandlers(){
         data.ingredients = json.ingredients||[]; data.recipes = json.recipes||[];
         data.mealPlan = json.mealPlan||{}; data.shoppingChecked = json.shoppingChecked||{};
         if(json.profiles && json.profiles.length===2) data.profiles = json.profiles;
+        data.inventory = json.inventory || {};
         migrateMealPlan(data);
         saveLocal(); renderAll();
       }catch(err){ alert('El archivo no es un JSON válido.'); }
